@@ -4,9 +4,37 @@
 #include <stdio.h>
 #include <math.h>
 
+// ASSETS
+#define X(name, path) Image name;
+#include "assets.h"
+#undef X 
+
+void
+loadass() {
+#define X(name, path) name = LoadImage("./" path);
+#include "assets.h"
+#undef X 
+}
+
 const int
 GAMEW = 320,
 GAMEH = 180;
+
+#define GAMEW 320
+#define GAMEH 180
+#define ASPECT (float)GAMEW / (float)GAMEH
+
+const Color 
+sky = {100, 100, 255, 255};
+
+Color
+grndpix[GAMEH][GAMEW] = {0},
+billpix[GAMEH][GAMEW] = {0},
+partpix[GAMEH][GAMEW] = {0};
+float
+depth[GAMEH][GAMEW];
+
+#define GROUND_DEPTH 0
 
 struct {
     Vector2 pos;
@@ -17,26 +45,92 @@ struct {
     int prevtouched;
     int touched;
     int raised;
-} hro = {0};
+} 
+hro = {0};
+
+struct {
+    Vector3 pos;
+    Vector3 frwd;
+    Vector3 side;
+    Vector3 up;
+    float roll;
+    float fov;
+    float foc_len;
+} 
+cam = {
+    .pos = {0,0,5},
+    .frwd = {1,0,0},
+    .fov = PI / 2,
+};
+
+void
+drawground() {
+    for (int x = 0; x < GAMEW; x++) {
+        for (int y = 0; y < GAMEH; y++) {
+            if (depth[y][x] > GROUND_DEPTH) continue;
+
+            Vector2 uv = {(float)x / GAMEW * 2 - 1, (float)y / GAMEH * 2 - 1};
+            uv.x *= ASPECT;
+            uv.y *= -1;
+
+            Vector3 ray = cam.frwd;
+            ray = Vector3Add(ray, Vector3Scale(cam.side, uv.x * cam.foc_len));
+            ray = Vector3Add(ray, Vector3Scale(cam.up  , uv.y * cam.foc_len));
+            ray = Vector3RotateByAxisAngle(ray, cam.frwd, cam.roll);
+            ray = Vector3Normalize(ray);
+            
+            if (ray.z >= -0.0f) {
+                grndpix[y][x] = sky;
+                continue;
+            }
+
+            ray = Vector3Scale(ray, -cam.pos.z / ray.z);
+            Vector3 groundIntersect = Vector3Add(ray, cam.pos);
+
+            int grid = abs((int)groundIntersect.x) + abs((int)groundIntersect.y);
+            if(groundIntersect.x * groundIntersect.y < 0) grid++;
+            grid %= 2;
+
+            grndpix[y][x] = (Color) { grid * 255, grid * 255, grid * 255, 255 };
+        }
+    }
+}
+
+void
+docam() {
+    cam.pos.x = hro.pos.x / 100;
+    cam.pos.y = hro.pos.y / 100;
+    cam.pos.z = 1 / (hro.touched*0.1 + 0.4) + 0.5;
+    cam.frwd.x = hro.mom.x;
+    cam.frwd.y = hro.mom.y;
+
+    cam.frwd = Vector3Normalize(cam.frwd);
+    cam.side = Vector3CrossProduct((Vector3){0, 0, 1}, cam.frwd);
+    cam.up   = Vector3CrossProduct(cam.frwd, cam.side);
+    
+    cam.foc_len = 1.0 / tan(cam.fov / 2.0);
+
+    printf("pos = (%f, %f)\n", cam.pos.x, cam.pos.y);
+}
 
 #define HRO_SZ           16
 #define HRO_TURNACC      0.3
-#define HRO_ACC          0.2
+#define HRO_ACC          0.5
 #define HRO_LINDAMP      0.98
 #define HRO_TIMETOUCH    3
 #define HRO_TIMETOUCH1   20
 #define HRO_TIMETOUCH2   40
 #define HRO_TIMETOUCH3   80
 #define HRO_PRETOUCHDAMP 0.85
-#define HRO_TOUCHSP      6
+#define HRO_TOUCHSP      20
 
 #define HRO_TIMERAISE    3
-#define HRO_RAISEBOOST1  2
-#define HRO_RAISEBOOST2  3
-#define HRO_RAISEBOOST3  4
+#define HRO_RAISEBOOST1  1.4
+#define HRO_RAISEBOOST2  2
+#define HRO_RAISEBOOST3  2.4
 
 void
-do_hro() {
+dohro() {
     if (hro.mom.x == 0 && hro.mom.y == 0) hro.mom = (Vector2) {1,0};
 
     Vector2 frwd = Vector2Normalize(hro.mom);
@@ -44,9 +138,9 @@ do_hro() {
     bool left = IsKeyDown(KEY_LEFT ) || IsKeyDown(KEY_A);
     bool right = IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D);
     if      (left && !right)
-        hro.to = Vector2Rotate(frwd,  PI/2);
-    else if (right && !left)
         hro.to = Vector2Rotate(frwd, -PI/2);
+    else if (right && !left)
+        hro.to = Vector2Rotate(frwd,  PI/2);
     else
         hro.to = (Vector2){0};
 
@@ -79,30 +173,28 @@ do_hro() {
     }
 
     hro.pos = Vector2Add(hro.pos, hro.vel);
-
-    if (hro.pos.x < 0)                 hro.pos.x += GetScreenWidth();
-    if (hro.pos.x > GetScreenWidth ()) hro.pos.x -= GetScreenWidth();
-    if (hro.pos.y < 0)                 hro.pos.y += GetScreenHeight();
-    if (hro.pos.y > GetScreenHeight()) hro.pos.y -= GetScreenHeight();
 }
 
 int 
 main(void) {
+    loadass();
+
     InitWindow(800, 450, "raylib [core] example - basic window");
 
-    Image img = GenImageColor(GAMEW, GAMEH, PINK);
-    Texture2D tex = LoadTextureFromImage(img);
-
-    Color *pix = malloc(GAMEW * GAMEH * sizeof(Color));
-    for (int x = 0; x < GAMEW; x++)
-        for (int y = 0; y < GAMEH; y++)
-            pix[y * GAMEW + x] = (Color) { x, y, 0, 255 };
-
-    UpdateTexture(tex, pix);
+    Image img = GenImageColor(GAMEW, GAMEH, BLANK);
+    Texture2D grndtex = LoadTextureFromImage(img);
+    Texture2D billtex = LoadTextureFromImage(img);
+    Texture2D parttex = LoadTextureFromImage(img);
 
     SetTargetFPS(60);
     while (!WindowShouldClose()) {
-        do_hro();
+        dohro();
+        docam();
+        
+        drawground();
+        UpdateTexture(grndtex, grndpix);
+        UpdateTexture(billtex, billpix);
+        UpdateTexture(parttex, partpix);
 
         BeginDrawing();
             ClearBackground(RAYWHITE);
@@ -114,19 +206,11 @@ main(void) {
                 tint = GREEN;
             else if (hro.touched > HRO_TIMETOUCH1)
                 tint = BLUE;
-            DrawTexturePro(tex, 
-                (Rectangle){0,0,320,180}, (Rectangle){0,0,800,450}, 
-                (Vector2){0,0}, 0.0,
-                tint
-                );
-
-            DrawRectangle((int)hro.pos.x, (int)hro.pos.y, HRO_SZ, HRO_SZ, RED);
-            Vector2 look = Vector2Add(hro.pos, Vector2Scale(hro.mom, hro.sp*10));
-            DrawRectangle((int)look.x, (int)look.y, HRO_SZ, HRO_SZ, BLUE);
-            Vector2 lookm = Vector2Add(hro.pos, Vector2Scale(hro.to, 100));
-            DrawRectangle((int)lookm.x, (int)lookm.y, HRO_SZ, HRO_SZ, PINK);
-            Vector2 lookv = Vector2Add(hro.pos, Vector2Scale(hro.vel, 10));
-            DrawRectangle((int)lookv.x, (int)lookv.y, HRO_SZ, HRO_SZ, GREEN);
+            Rectangle gamerect = (Rectangle){0,0,GAMEW,GAMEH};
+            Rectangle winrect  = (Rectangle){0,0,GetScreenWidth(),GetScreenHeight()};
+            //DrawTexturePro(parttex, gamerect, winrect, Vector2Zero(), 0, tint);
+            //DrawTexturePro(billtex, gamerect, winrect, Vector2Zero(), 0, tint);
+            DrawTexturePro(grndtex, gamerect, winrect, Vector2Zero(), 0, tint);
         EndDrawing();
     }
 
