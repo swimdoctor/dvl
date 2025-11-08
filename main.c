@@ -1,5 +1,6 @@
 #include "raylib.h"
 #include "raymath.h"
+#include "map.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -63,43 +64,58 @@ cam = {
     .fov = PI / 2,
 };
 
+/* Returns {0} if ray does not intersect ground */
+Vector3
+raytoground(int x, int y) { 
+    Vector2 uv = {(float)x / GAMEW * 2 - 1, (float)y / GAMEH * 2 - 1};
+    uv.x *= ASPECT;
+    uv.y *= -1;
+
+    Vector3 ray = cam.frwd;
+    ray = Vector3Add(ray, Vector3Scale(cam.side, uv.x * cam.foc_len));
+    ray = Vector3Add(ray, Vector3Scale(cam.up  , uv.y * cam.foc_len));
+    ray = Vector3RotateByAxisAngle(ray, cam.frwd, cam.roll);
+    ray = Vector3Normalize(ray);
+
+    if (ray.z >= -0.0f) {
+        return Vector3Zero();
+    }
+
+    ray = Vector3Scale(ray, -cam.pos.z / ray.z);
+
+    return ray;
+}
+
 void
 drawground() {
     for (int x = 0; x < GAMEW; x++) {
         for (int y = 0; y < GAMEH; y++) {
             if (depth[y][x] > GROUND_DEPTH) continue;
+            Vector3 ray = raytoground(x, y);
 
-            Vector2 uv = {(float)x / GAMEW * 2 - 1, (float)y / GAMEH * 2 - 1};
-            uv.x *= ASPECT;
-            uv.y *= -1;
-
-            Vector3 ray = cam.frwd;
-            ray = Vector3Add(ray, Vector3Scale(cam.side, uv.x * cam.foc_len));
-            ray = Vector3Add(ray, Vector3Scale(cam.up  , uv.y * cam.foc_len));
-            ray = Vector3RotateByAxisAngle(ray, cam.frwd, cam.roll);
-            ray = Vector3Normalize(ray);
-            
-            if (ray.z >= -0.0f) {
+            if (ray.z == 0) {
                 grndpix[y][x] = sky;
                 continue;
             }
 
-            ray = Vector3Scale(ray, -cam.pos.z / ray.z);
-            Vector3 groundIntersect = Vector3Add(ray, cam.pos);
+            Vector3 intersect = Vector3Add(ray, cam.pos);
 
-            int grid = abs((int)groundIntersect.x) + abs((int)groundIntersect.y);
-            if(groundIntersect.x * groundIntersect.y < 0) grid++;
-            grid %= 2;
+            Color roadcol = RED;
+            if (isroad((int)intersect.x, (int)intersect.y))
+                roadcol = BLUE;
 
-            grndpix[y][x] = (Color) { grid * 255, grid * 255, grid * 255, 255 };
+            if ((int)intersect.x % 2 == 0) roadcol.b = 255;
+            if ((int)intersect.y % 2 == 0) roadcol.b = 128;
+
+            grndpix[y][x] = roadcol;
         }
     }
 }
 
 void
 docam() {
-    cam.pos.x = hro.pos.x / 100;
-    cam.pos.y = hro.pos.y / 100;
+    cam.pos.x = hro.pos.x;
+    cam.pos.y = hro.pos.y;
     cam.pos.z = 1 / (hro.touched*0.1 + 0.4) + 0.5;
     cam.frwd.x = hro.mom.x;
     cam.frwd.y = hro.mom.y;
@@ -109,20 +125,18 @@ docam() {
     cam.up   = Vector3CrossProduct(cam.frwd, cam.side);
     
     cam.foc_len = 1.0 / tan(cam.fov / 2.0);
-
-    printf("pos = (%f, %f)\n", cam.pos.x, cam.pos.y);
 }
 
 #define HRO_SZ           16
-#define HRO_TURNACC      0.3
-#define HRO_ACC          0.5
+#define HRO_TURNACC      0.01
+#define HRO_LINACC       0.015
 #define HRO_LINDAMP      0.98
 #define HRO_TIMETOUCH    3
 #define HRO_TIMETOUCH1   20
 #define HRO_TIMETOUCH2   40
 #define HRO_TIMETOUCH3   80
 #define HRO_PRETOUCHDAMP 0.85
-#define HRO_TOUCHSP      20
+#define HRO_TOUCHSP      0.4
 
 #define HRO_TIMERAISE    3
 #define HRO_RAISEBOOST1  1.4
@@ -131,6 +145,8 @@ docam() {
 
 void
 dohro() {
+    if (IsKeyDown(KEY_R)) hro.sp = 0.04;
+
     if (hro.mom.x == 0 && hro.mom.y == 0) hro.mom = (Vector2) {1,0};
 
     Vector2 frwd = Vector2Normalize(hro.mom);
@@ -157,7 +173,7 @@ dohro() {
     }
 
     if (hro.touched == 0)
-        hro.sp = (hro.sp + HRO_ACC) * HRO_LINDAMP;
+        hro.sp = (hro.sp + HRO_LINACC) * HRO_LINDAMP;
     else if (hro.touched < HRO_TIMETOUCH)
         hro.sp = hro.sp * HRO_PRETOUCHDAMP;
     else 
@@ -178,6 +194,7 @@ dohro() {
 int 
 main(void) {
     loadass();
+    loadmap();
 
     InitWindow(800, 450, "raylib [core] example - basic window");
 
@@ -188,6 +205,7 @@ main(void) {
 
     SetTargetFPS(60);
     while (!WindowShouldClose()) {
+        markframe();
         dohro();
         docam();
         
