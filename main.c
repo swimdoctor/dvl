@@ -10,6 +10,9 @@
 #include <string.h>
 #include "enemies.h"
 
+bool paused = true;
+int frame = 0;
+
 #define PAL1  (Color) {  11,  16,  22, 255 }
 #define PAL2  (Color) {  20,  31,  37, 255 }
 #define PAL3  (Color) {  31,  45,  54, 255 }
@@ -114,9 +117,8 @@ depth[GAMEH][GAMEW];
 
 #define GROUND_DEPTH 0
 
-Enemy* enemyqueue[100];
 int queuecount = 0;
-#define TRIGGERRANGE 4
+#define TRIGGERRANGE 50
 
 struct {
     Vector2 pos;
@@ -125,6 +127,7 @@ struct {
     Vector2 vel;
     float ang;
     float sp;
+    int penalty;
     int prevtouched;
     int touched;
     int raised;
@@ -223,26 +226,6 @@ drawbillboard(Vector3 billpos, Sprite sprite, int scale) {
     }
 }
 
-Vector2
-worldtoscreen(Vector3 vec) {
-    Vector3 ray = Vector3Subtract(vec, cam.pos);
-    if(Vector3DotProduct(ray, cam.frwd) <= 0) return (Vector2) {-1, -1};
-    ray = Vector3Scale(Vector3Normalize(ray), 1/cos(Vector3Angle(ray, cam.frwd)));
-    
-    Vector2 uv = {Vector3DotProduct(ray, cam.side) / cam.foc_len, 
-                  Vector3DotProduct(ray, cam.up  ) / cam.foc_len};
-    
-    float x = uv.x;
-    x /= (ASPECT);
-    x += 1;
-    x /= 2;
-    x *= GAMEW;
-
-    float y = GAMEH * (uv.y * -1 + 1) / 2;
-
-    return (Vector2) {x, y};
-}
-
 /* Returns {0} if ray does not intersect ground */
 Vector3
 raytoground(int x, int y) { 
@@ -295,10 +278,10 @@ drawground() {
                 else                     roadcol = PAL9;
             }
 
-            for(int i = 0; i < queuecount; i++) {
-                if(Vector2DistanceSqr(enemyqueue[i]->pos, (Vector2){ray.x + cam.pos.x, ray.y + cam.pos.y}) < 4) {
-                    int spritex = (int)((ray.x + cam.pos.x - enemyqueue[i]->pos.x) * 8); 
-                    int spritey = (int)((ray.y + cam.pos.y - enemyqueue[i]->pos.y) * 8);
+            for(int i = 0; i < enemycount; i++) {
+                if(enemies[i].triggered && Vector2DistanceSqr(enemies[i].pos, (Vector2){ray.x + cam.pos.x, ray.y + cam.pos.y}) < 4) {
+                    int spritex = (int)((ray.x + cam.pos.x - enemies[i].pos.x) * 8); 
+                    int spritey = (int)((ray.y + cam.pos.y - enemies[i].pos.y) * 8);
 
                     spritex += 16;
                     spritey += 16;
@@ -350,7 +333,11 @@ drawhro() {
 
     Sprite *sprite = &sprite_carfrwd;
 
-    if (fabsf(hro.ang) < 3) {
+    if (hro.pos.x < 8) {
+        sprite = &sprite_introcar;
+    } else if (hro.pos.x < 32) {
+        sprite = &sprite_introcar2;
+    } else if (fabsf(hro.ang) < 3) {
         if (hro.touched > HRO_TIMETOUCH2) {
             if      (hro.ang < -1.544) sprite = &sprite_cardriftr2;
             else if (hro.ang >  1.544) sprite = &sprite_cardriftl2;
@@ -408,18 +395,19 @@ drawhro() {
             vel.x = vel.x + cam.side.x * 0.1 + hro.mom.x * 0.2;
             vel.y = vel.y + cam.side.y * 0.1 + hro.mom.y * 0.2;
         }
+        
+        if (ps[0].x != 0)
+            for (int i = 0; i < 6; i++) {
+                int pi = GetRandomValue(0, pimax);
 
-        for (int i = 0; i < 6; i++) {
-            int pi = GetRandomValue(0, pimax);
-
-            touch_ptcs[tptcidx] = (Touch_Ptc) {
-                .pos = Vector3Add(cam.pos, raytoground(hfx+ps[pi].x, hfy+ps[pi].y)),
-                .vel = vel,
-                .life = 100,
-                .back = back,
-            };
-            tptcidx = (tptcidx + 1) % NTOUCHPTC;
-        }
+                touch_ptcs[tptcidx] = (Touch_Ptc) {
+                    .pos = Vector3Add(cam.pos, raytoground(hfx+ps[pi].x, hfy+ps[pi].y)),
+                    .vel = vel,
+                    .life = 100,
+                    .back = back,
+                };
+                tptcidx = (tptcidx + 1) % NTOUCHPTC;
+            }
     }
     
 
@@ -434,6 +422,11 @@ drawhro() {
 
     int minx = hfx - sprite->w / 2, maxx = hfx + sprite->w / 2;
     int miny = hfy, maxy = hfy + sprite->h;
+    if (sprite == &sprite_introcar) {
+        miny -= 20; maxy -= 20;
+    } else if (sprite == &sprite_introcar2) {
+        miny -= 20; maxy -= 20;
+    }
     for (int x = MAX(minx, 0); x < MIN(maxx, GAMEW); x++)
         for (int y = MAX(miny, 0); y < MIN(maxy, GAMEH); y++) {
             Color p = sprite->p[(y - miny) * sprite->w + (x - minx)];
@@ -445,6 +438,14 @@ drawhro() {
         for (int i = 0; i < NTOUCHPTC; i++)
             if (touch_ptcs[i].life && !touch_ptcs[i].back) 
                 drawptc(touch_ptcs[i].pos, touchcol, touch_ptcs[i].rot);
+}
+
+void
+drawnotice(Sprite sprite) {
+    if (frame % 60 > 30) return;
+    for (int x = 0; x < GAMEW; x++)
+        for (int y = 0; y < GAMEH; y++)
+            ptcpix[y][x] = sprite.p[y*GAMEW+x];
 }
 
 void
@@ -486,6 +487,14 @@ docam() {
     float lerps = hro.touched ? CAM_ROLLSPEEDA : CAM_ROLLSPEEDB;
     cam.rollvel = LERP(cam.rollvel, rollveltarg, lerps); 
     cam.roll += cam.rollvel;
+
+    if (hro.pos.x < 32) {
+        float lerpby = (float)hro.pos.x / 32;
+        cam.frwd = Vector3Lerp((Vector3){0.3,1,-1}, cam.frwd, lerpby);
+        cam.pos = Vector3Lerp((Vector3){19, 20, 6}, cam.pos, lerpby);
+        cam.roll = LERP(0, cam.roll, lerpby);
+        cam.fov = LERP(PI/2 - 0.4, 0.1, lerpby);
+    }
 
     cam.frwd = Vector3Normalize(cam.frwd);
     cam.side = Vector3CrossProduct((Vector3){0, 0, 1}, cam.frwd);
@@ -534,14 +543,16 @@ dohro() {
         hro.touched = 0;
     }
 
-    if (hro.touched == 0) {
+    if (hro.penalty) {
+        hro.penalty--;
+    } else if (hro.touched == 0) {
         hro.sp = (hro.sp + HRO_LINACC);
         if (hro.sp > 0) hro.sp *= HRO_LINDAMP;
-    }
-    else if (hro.touched < HRO_TIMETOUCH)
+    } else if (hro.touched < HRO_TIMETOUCH) {
         hro.sp = hro.sp * HRO_PRETOUCHDAMP;
-    else 
+    } else {
         hro.sp = HRO_TOUCHSP;
+    }
 
     if (hro.raised == HRO_TIMERAISE && hro.prevtouched) {
         if (hro.prevtouched > HRO_TIMETOUCH3)
@@ -566,7 +577,7 @@ dohro() {
     SetMusicVolume(audio_drift2, rangefalloff((float)hro.touched, HRO_TIMETOUCH2, HRO_TIMETOUCH3, 0.3));
     SetMusicVolume(audio_drift1, rangefalloff((float)hro.touched, HRO_TIMETOUCH1, HRO_TIMETOUCH2, 0.3));
     SetMusicVolume(audio_drift0, rangefalloff((float)hro.touched,              1, HRO_TIMETOUCH2, 1));
-    SetMusicPitch(audio_bigrev, MAX(hro.sp*1.4, 0.2));
+    SetMusicPitch(audio_bigrev, MAX(hro.sp*1.5, 0.2));
 
     UpdateMusicStream(audio_bigrev);
     UpdateMusicStream(audio_drift0);
@@ -580,6 +591,7 @@ dohro() {
 void
 hrosndinit() {
     PlayMusicStream(audio_bigrev);
+    SetMusicVolume(audio_bigrev, 0.4);
     PlayMusicStream(audio_drift0);
     PlayMusicStream(audio_drift1);
     PlayMusicStream(audio_drift2);
@@ -595,66 +607,97 @@ doenemies() {
                 ptcpix[(int)screen.y][(int)screen.x] = (Color) {255, 255, 255, 255};
 
             if(Vector2DistanceSqr(hro.pos, enemies[i].trigger) < TRIGGERRANGE * TRIGGERRANGE) {
-                printf("Triggered enemy %i\n", i);
-                enemyqueue[queuecount] = &(enemies[i]);
-                enemyqueue[queuecount]->triggered = true;
-                enemyqueue[queuecount]->timer = enemyqueue[queuecount]->delay * 60;
-                queuecount++;
+                enemies[i].triggered = true;
+                enemies[i].timer = enemies[i].delay;
             }
         }
-    }
 
-    for(int i = 0; i < queuecount; i++) {
-        enemyqueue[i]->timer--;
-        if(sin(enemyqueue[i]->timer / 8) > 0){
-            drawbillboard(Vector3Add(cam.pos, Vector3Add(Vector3Scale(cam.frwd, 8), Vector3Scale(cam.side, enemyqueue[i]->road))), sprite_warning, 16);
-        }
-        float zpos = 15;
-        if(enemyqueue[i]->timer < 30) {
-            zpos = enemyqueue[i]->timer/2;
-        }
-
-        switch(enemyqueue[i]->type) {
-            case SPEAR:
-                drawbillboard((Vector3) {enemyqueue[i]->pos.x, enemyqueue[i]->pos.y, zpos}, sprite_speardemon, 4);
-                break;
-            case THWOMP:
-                drawbillboard((Vector3) {enemyqueue[i]->pos.x, enemyqueue[i]->pos.y, zpos}, sprite_fleshthwomp, 3);
-                break;
-            default:
-                break;
-        }
-
-        if(enemyqueue[i]->timer <= 0) {
-            float enemyRange = 0;
-            switch(enemyqueue[i]->type) {
-                case SPEAR:  enemyRange = 2.5f; break;
-                case THWOMP: enemyRange = 5;    break;
-                default:     enemyRange = 0;    break;
+        if (enemies[i].triggered && !enemies[i].gone) {
+            enemies[i].timer--;
+            if(sin(enemies[i].timer / 8) > 0){
+                drawbillboard(Vector3Add(cam.pos, Vector3Add(Vector3Scale(cam.frwd, 8), Vector3Scale(cam.side, enemies[i].road))), sprite_warning, 16);
+            }
+            float zpos = 15;
+            if(enemies[i].timer < 30) {
+                zpos = enemies[i].timer/2;
             }
 
-
-            if(Vector2Distance(hro.pos, enemyqueue[i]->pos) < enemyRange) {
-                hro.sp = 0;
-                printf("YOUVE BEEN HIT");
+            switch(enemies[i].type) {
+                case SPEAR:
+                    drawbillboard((Vector3) {enemies[i].pos.x, enemies[i].pos.y, zpos}, sprite_speardemon, 4);
+                    break;
+                case THWOMP:
+                    drawbillboard((Vector3) {enemies[i].pos.x, enemies[i].pos.y, zpos}, sprite_fleshthwomp, 3);
+                    break;
+                default:
+                    break;
             }
 
-            enemyqueue[i]->timer = -1;
-            queuecount--;
-            for(int j = i; j < queuecount - 1; j++) {
-                enemyqueue[j] = enemyqueue[j + 1];
+            if(enemies[i].timer <= 4) {
+                float enemyRange = 0;
+                switch(enemies[i].type) {
+                    case SPEAR:  enemyRange = 8; break;
+                    case THWOMP: enemyRange = 2;    break;
+                    default:     enemyRange = 2;    break;
+                }
+
+
+                if(Vector2Distance(hro.pos, enemies[i].pos) < enemyRange) {
+                    hro.sp = 0;
+                    hro.penalty = 30;
+                    PlaySound(audio_bonk);
+                }
+                enemies[i].gone = true;
             }
         }
     }
 }
 
+Music *currmusic;
+Music *currtrans;
+bool startchange = false;
+
+void
+updatemusic() {
+    float cml = GetMusicTimeLength(*currmusic);
+
+    Music *targtrans = NULL;
+    if (currmusic == &audio_m1 && !paused) targtrans = &audio_m1t2;
+    if (currmusic == &audio_m2 && hro.pos.x > 800) targtrans = &audio_m2t3;
+
+    if (targtrans && !currtrans) {
+        float tml = GetMusicTimeLength(*targtrans);
+
+        if (GetMusicTimePlayed(*currmusic) >= (cml - tml)) {
+            SetMusicVolume(*currmusic, 0);
+            currtrans = targtrans;
+            currtrans->looping = false;
+            PlayMusicStream(*currtrans);
+            SeekMusicStream(*currtrans, GetMusicTimePlayed(*currmusic) - (cml - tml));
+        }
+    }
+
+    if (currtrans) {
+        UpdateMusicStream(*currtrans);
+        if (!IsMusicStreamPlaying(*currtrans)) {
+            if (currtrans == &audio_m1t2) currmusic = &audio_m2;
+            if (currtrans == &audio_m2t3) currmusic = &audio_m3;
+
+            PlayMusicStream(*currmusic);
+
+            currtrans = NULL;
+        }
+    }
+    UpdateMusicStream(*currmusic);
+}
+
 int 
 main(void) {
-    printf("----\n");
     SetTraceLogLevel(LOG_ERROR); 
 
     InitWindow(800, 450, "raylib [core] example - basic window");
     InitAudioDevice();
+    //SetMasterVolume(0);
 
     loadass();
     loadmap();
@@ -666,12 +709,19 @@ main(void) {
     Texture2D grndtex = LoadTextureFromImage(img);
     Texture2D billtex = LoadTextureFromImage(img);
     Texture2D ptctex  = LoadTextureFromImage(img);
-    hro.pos = (Vector2){32,32};
+    hro.pos = (Vector2){0,32};
+    //hro.pos = (Vector2){1280,370};
+
+    PlayMusicStream(audio_m1);
+    currmusic = &audio_m1;
 
     SetTargetFPS(60);
     while (!WindowShouldClose()) {
-        dohro();
+        if (!paused) dohro();
         docam();
+
+        if (paused && IsKeyPressed(KEY_SPACE)) paused = false;
+        updatemusic();
 
         //Clear pixel buffers
         memset(billpix, 0, sizeof(billpix));
@@ -692,8 +742,9 @@ main(void) {
         drawground();
         drawhro();
 
-
-
+        if (paused) drawnotice(sprite_pressspace);
+        if (hro.pos.x > 280 && hro.pos.x < 400) drawnotice(sprite_controls1);
+        if (hro.pos.y > 150 && hro.pos.y < 240 && hro.pos.x < 880) drawnotice(sprite_controls2);
 
         UpdateTexture(grndtex, grndpix);
         UpdateTexture(billtex, billpix);
@@ -708,7 +759,8 @@ main(void) {
             DrawTexturePro(billtex, gamerect, winrect, Vector2Zero(), 0, WHITE);
             DrawTexturePro(ptctex , gamerect, winrect, Vector2Zero(), 0, WHITE);
         EndDrawing();
-        //printf("%i\n", GetFPS());a
+
+        frame++;
     }
 
     CloseWindow();

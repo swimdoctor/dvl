@@ -10,3 +10,8 @@ X(warning);
 X(target);
 X(speardemon);
 X(fleshthwomp);
+X(introcar);
+X(introcar2);
+X(pressspace);
+X(controls1);
+X(controls2);
