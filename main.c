@@ -366,6 +366,7 @@ int tptcidx = 0;
 void
 drawhro() {
     if (IsKeyDown(KEY_Y)) return;
+    if (cam.pos.z > 10) return;
 
     Sprite *sprite = &sprite_carfrwd;
 
@@ -485,6 +486,25 @@ drawnotice(Sprite sprite) {
 }
 
 void
+drawnotice2(Sprite sprite) {
+    for (int x = 0; x < GAMEW; x++)
+        for (int y = 0; y < GAMEH; y++)
+            if (sprite.p[y*GAMEW+x].a)
+                ptcpix[y][x] = sprite.p[y*GAMEW+x];
+}
+
+void
+drawnotice3(Sprite sprite, int ox) {
+    for (int x = 0; x < GAMEW; x++)
+        for (int y = 0; y < GAMEH; y++) {
+            int sx = x - ox;
+            if (sx < 0 || sx >= GAMEW) continue;
+            if (sprite.p[y*GAMEW+sx].a)
+                ptcpix[y][x] = sprite.p[y*GAMEW+sx];
+        }
+}
+
+void
 docam() {
     float kicktarg = MAX(MIN(hro.sp, 1), 0.5) * 2 - 1;
     cam.kick = LERP(cam.kick, kicktarg, CAM_KICKSPEED);
@@ -530,6 +550,19 @@ docam() {
         cam.pos = Vector3Lerp((Vector3){19, 20, 6}, cam.pos, lerpby);
         cam.roll = LERP(0, cam.roll, lerpby);
         cam.fov = LERP(PI/2 - 0.4, 0.1, lerpby);
+
+#define N 200
+        if (frame > 622+N+N) {
+        } else if (frame < 622+N){
+            cam.pos.z += 50;
+        } else {
+            float diff = (((float)frame - (622+N)) / N);
+            printf("%f\n", diff);
+            diff = (1-diff);
+            diff *= diff;
+            diff *= diff;
+            cam.pos.z += diff * 100;
+        }
     }
 
     cam.frwd = Vector3Normalize(cam.frwd);
@@ -840,8 +873,8 @@ doboss() {
     for (int n = 0; n < nb; n++) {
         if (Vector3Length(bpcts[n].vel) < 0.01) {
             Vector3 diff = Vector3Subtract(bpcts[n].pos, bosspos);
-            
-            
+            Vector3 norm = Vector3Normalize(Vector3Subtract(bpcts[n].pos, bosspos));
+            Vector3 targ = Vector3Add(Vector3Scale(norm, 5), bosspos);
 
             if (!IsMusicStreamPlaying(audio_m7)) {
                 
@@ -912,10 +945,12 @@ main(void) {
     Texture2D billtex = LoadTextureFromImage(img);
     Texture2D ptctex  = LoadTextureFromImage(img);
     hro.pos = (Vector2){0,32};
-    hro.pos = (Vector2){2250, 559};
 
-    PlayMusicStream(audio_m6);
-    currmusic = &audio_m6;
+    PlayMusicStream(audio_cutscene);
+    currmusic = &audio_cutscene;
+
+    //PlayMusicStream(audio_m6);
+    //currmusic = &audio_m6;
 
     SetTargetFPS(60);
     while (!WindowShouldClose()) {
@@ -931,33 +966,58 @@ main(void) {
         docam();
         doboss();
 
-        if (paused && IsKeyPressed(KEY_SPACE)) {
-            startFrame = frame;
-            paused = false;
+        bool on = false;
+        if (frame < 170) {
+            drawnotice2(sprite_ArcadeControls);
+            drawnotice3(sprite_lefthand, frame % 30 >= 10 ? 1 : 0);
+            drawnotice3(sprite_righthand, frame % 30 >= 10 ? 1 : 0);
+        } else if (frame < 340) {
+            drawnotice2(sprite_ArcadeScreen);
+        } else if (frame < 505) {
+            drawnotice2(sprite_ArcadeFar);
+            drawnotice2(sprite_ArcadeFarbloodless);
+        } else if (frame < 633) {
+            drawnotice2(sprite_ArcadeFar);
+            drawnotice3(sprite_ArcadeFarsplat, -MIN(frame - 505, 2));
+        } else {
+            on = true;
+            if (paused && IsKeyPressed(KEY_SPACE)) {
+                startFrame = frame;
+                paused = false;
+            }
         }
         updatemusic();
 
-        printf("player = %d %d\n", (int)hro.pos.x, (int)hro.pos.y);
-
-        doenemies();
-
-        //draw trees
-        int index = 0;
-        do{
-            drawbillboard((Vector3) {treeloc[index].x, treeloc[index].y, 0}, sprite_eviltree, 8);
-            index++;
+        if (cam.pos.z < 10 && IsMusicStreamPlaying(audio_cutscene)) {
+            StopMusicStream(audio_cutscene);
+            PlayMusicStream(audio_m1);
+            currmusic = &audio_m1;
         }
-        while(!Vector2Equals(treeloc[index], Vector2Zero()));
-        
-        drawground();
-        drawhro();
 
-        donumbers();
+        if (on) {
+            donumbers();
+            doenemies();
 
-        if (paused) drawnotice(sprite_pressspace);
-        if (hro.pos.x > 280 && hro.pos.x < 400) drawnotice(sprite_controls1);
-        if (hro.pos.y > 150 && hro.pos.y < 240 && hro.pos.x < 880) drawnotice(sprite_controls2);
+            //draw trees
+            int index = 0;
+            do{
+                drawbillboard((Vector3) {treeloc[index].x, treeloc[index].y, 0}, sprite_eviltree, 8);
+                index++;
+            }
+            while(!Vector2Equals(treeloc[index], Vector2Zero()));
+            
+            drawground();
+            drawhro();
 
+            if (cam.pos.z < 10) {
+            if (paused) drawnotice(sprite_pressspace);
+            if (hro.pos.x > 280 && hro.pos.x < 400) drawnotice(sprite_controls1);
+            if (hro.pos.y > 150 && hro.pos.y < 240 && hro.pos.x < 880) drawnotice(sprite_controls2);
+            }
+        }
+
+        if (on && frame < 772) 
+            drawnotice2(sprite_present);
         UpdateTexture(grndtex, grndpix);
         UpdateTexture(billtex, billpix);
         UpdateTexture(ptctex , ptcpix );

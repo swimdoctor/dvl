@@ -401,7 +401,7 @@ loadmap() {
         ENDCHUNK(bc, 32+i, 8);
     }
 
-    for (int i = 0; i < 30; i++) {
+    for (int i = 0; i < 40; i++) {
         STARTCHUNK(bc);
             bezier(bc, (Bez[]){ LINEX(48, 12, 12), Bez0 });
         ENDCHUNK(bc, 35+i, 8);

@@ -16,3 +16,15 @@ X(pressspace);
 X(controls1);
 X(controls2);
 X(numbers);
+
+X(ArcadeControls);
+X(lefthand);
+X(righthand);
+
+X(ArcadeScreen);
+
+X(ArcadeFar);
+X(ArcadeFarbloodless);
+X(ArcadeFarsplat);
+
+X(present);
