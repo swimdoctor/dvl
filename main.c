@@ -637,7 +637,7 @@ doenemies() {
                 float enemyRange = 0;
                 switch(enemies[i].type) {
                     case SPEAR:  enemyRange = 8; break;
-                    case THWOMP: enemyRange = 2;    break;
+                    case THWOMP: enemyRange = 16;    break;
                     default:     enemyRange = 2;    break;
                 }
 
@@ -664,6 +664,7 @@ updatemusic() {
     Music *targtrans = NULL;
     if (currmusic == &audio_m1 && !paused) targtrans = &audio_m1t2;
     if (currmusic == &audio_m2 && hro.pos.x > 800) targtrans = &audio_m2t3;
+    if (currmusic == &audio_m3 && hro.pos.x > 1450) targtrans = &audio_m3t4;
 
     if (targtrans && !currtrans) {
         float tml = GetMusicTimeLength(*targtrans);
@@ -682,6 +683,7 @@ updatemusic() {
         if (!IsMusicStreamPlaying(*currtrans)) {
             if (currtrans == &audio_m1t2) currmusic = &audio_m2;
             if (currtrans == &audio_m2t3) currmusic = &audio_m3;
+            if (currtrans == &audio_m3t4) currmusic = &audio_m4;
 
             PlayMusicStream(*currmusic);
 
@@ -709,8 +711,9 @@ main(void) {
     Texture2D grndtex = LoadTextureFromImage(img);
     Texture2D billtex = LoadTextureFromImage(img);
     Texture2D ptctex  = LoadTextureFromImage(img);
-    hro.pos = (Vector2){0,32};
-    //hro.pos = (Vector2){1280,370};
+    //hro.pos = (Vector2){0,32};
+    //hro.pos = (Vector2){645,153};
+    hro.pos = (Vector2){1453, 379};
 
     PlayMusicStream(audio_m1);
     currmusic = &audio_m1;
@@ -722,6 +725,8 @@ main(void) {
 
         if (paused && IsKeyPressed(KEY_SPACE)) paused = false;
         updatemusic();
+
+        printf("player = %d %d\n", (int)hro.pos.x, (int)hro.pos.y);
 
         //Clear pixel buffers
         memset(billpix, 0, sizeof(billpix));
