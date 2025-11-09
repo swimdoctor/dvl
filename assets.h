@@ -1,2 +1,8 @@
 X(eviltree);
 X(carfrwd);
+X(cardriftr1);
+X(cardriftr2);
+X(carturnr);
+X(cardriftl1);
+X(cardriftl2);
+X(carturnl);

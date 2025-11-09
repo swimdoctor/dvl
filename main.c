@@ -8,6 +8,36 @@
 #include "world.h"
 #include <time.h>
 
+#define PAL1 (Color) {  11,  16,  22, 255 }
+#define PAL2 (Color) {  20,  31,  37, 255 }
+#define PAL3 (Color) {  31,  45,  54, 255 }
+#define PAL4 (Color) {  33,  37,  40, 255 }
+
+#define PAL7 (Color) {  86,  41,  35, 255 }
+#define PAL9 (Color) { 102,  53,  46, 255 }
+
+#define HRO_SZ           16
+#define HRO_TURNACC      0.01
+#define HRO_LINACC       0.015
+#define HRO_LINDAMP      0.98
+#define HRO_TIMETOUCH    3
+#define HRO_TIMETOUCH1   20
+#define HRO_TIMETOUCH2   40
+#define HRO_TIMETOUCH3   80
+#define HRO_PRETOUCHDAMP 0.85
+#define HRO_TOUCHSP      0.4
+
+#define HRO_TIMERAISE    3
+#define HRO_RAISEBOOST1  1.4
+#define HRO_RAISEBOOST2  2
+#define HRO_RAISEBOOST3  2.4
+
+#define HRO_COLBOUNCE    -0.4
+
+#define CAM_BACK         5
+#define CAM_Z            2.5
+#define CAM_LOOKZ        -0.1
+
 // ASSETS
 typedef struct {
     int w, h;
@@ -172,14 +202,18 @@ drawground() {
                 continue;
             }
 
-            Vector3 intersect = Vector3Add(ray, cam.pos);
+            int wx = (int)ray.x + (int)cam.pos.x;
+            int wy = (int)ray.y + (int)cam.pos.y;
 
-            Color roadcol = RED;
-            if (isroad((int)intersect.x, (int)intersect.y))
-                roadcol = BLUE;
-
-            if ((int)intersect.x % 2 == 0) roadcol.b = 255;
-            if ((int)intersect.y % 2 == 0) roadcol.b = 128;
+            Color roadcol;
+            if (isroad(wx, wy)) {
+                int r = ((wx & 0b111) ^ (wy & 0b111)) * 0x10193;
+                if (r & 0x800) roadcol = PAL2;
+                else           roadcol = PAL1;
+            } else {
+                if ((wx + wy) % 6 > 3) roadcol = PAL7;
+                else                   roadcol = PAL9;
+            }
 
             grndpix[y][x] = roadcol;
         }
@@ -189,37 +223,30 @@ drawground() {
 
 void
 drawhro() {
+    float ang = Vector2Angle(hro.mom, hro.to);
     Sprite sprite = sprite_carfrwd;
+
+    if (fabsf(ang) < 3) {
+        if (hro.touched > HRO_TIMETOUCH2) {
+            if      (ang < -1.544) sprite = sprite_cardriftr2;
+            else if (ang >  1.544) sprite = sprite_cardriftl2;
+        } else if (hro.touched) {
+            if      (ang < -1.544) sprite = sprite_cardriftr1;
+            else if (ang >  1.544) sprite = sprite_cardriftl1;
+        } else {
+            if      (ang < -1.544) sprite = sprite_carturnr;
+            else if (ang >  1.544) sprite = sprite_carturnl;
+        }
+    }
+
     int sx = GAMEW/2 - sprite.w / 2;
     int sy = GAMEH - sprite.h;
     for (int x = 0; x < sprite.w; x++)
-        for (int y = 0; y < sprite.w; y++) {
+        for (int y = 0; y < sprite.h; y++) {
             if (sprite.p[y*sprite.w+x].a == 0) continue;
             grndpix[sy+y][sx+x] = sprite.p[y*sprite.w+x];
         }
 }
-
-#define HRO_SZ           16
-#define HRO_TURNACC      0.01
-#define HRO_LINACC       0.015
-#define HRO_LINDAMP      0.98
-#define HRO_TIMETOUCH    3
-#define HRO_TIMETOUCH1   20
-#define HRO_TIMETOUCH2   40
-#define HRO_TIMETOUCH3   80
-#define HRO_PRETOUCHDAMP 0.85
-#define HRO_TOUCHSP      0.4
-
-#define HRO_TIMERAISE    3
-#define HRO_RAISEBOOST1  1.4
-#define HRO_RAISEBOOST2  2
-#define HRO_RAISEBOOST3  2.4
-
-#define HRO_COLBOUNCE    -0.4
-
-#define CAM_BACK         5
-#define CAM_Z            2.5
-#define CAM_LOOKZ        -0.1
 
 void
 docam() {
