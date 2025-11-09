@@ -807,6 +807,7 @@ Bptc bpcts[ffff];
 int nb;
 int bosstime = 0;
 float y;
+float scale = 0.5;
 
 void
 doboss() {
@@ -832,26 +833,40 @@ doboss() {
             .vel = Vector3Zero(),
         };
 
+    
+    scale = Lerp(scale, 10, 0.001);
     for (int n = 0; n < nb; n++) {
         if (Vector3Length(bpcts[n].vel) < 0.01) {
-            Vector3 norm = Vector3Normalize(Vector3Subtract(bpcts[n].pos, bosspos));
-            Vector3 targ = Vector3Add(Vector3Scale(norm, 5), bosspos);
-            printv3(norm);
+            Vector3 diff = Vector3Subtract(bpcts[n].pos, bosspos);
+            
+            
 
             if (!IsMusicStreamPlaying(audio_m7)) {
-            bpcts[n].pos = Vector3Lerp(bpcts[n].pos, targ, 0.1);
-            float dnz = Vector2Length((Vector2){norm.x, norm.y}) * SGN(norm.x) * SGN(norm.y);
-            Vector2 norm2 = Vector2Normalize((Vector2){dnz, norm.z});
-            bpcts[n].pos.z -= norm2.x;
-            bpcts[n].pos.x += norm2.y;
-            bpcts[n].pos.y -= norm2.y;
+                
+                printf("%f\n", scale);
+                diff.z += (float)GetRandomValue(-100, 100) / 10;
+                diff.x += (float)GetRandomValue(-100, 100) / 10;
+                diff.y += (float)GetRandomValue(-100, 100) / 10;
+                Vector3 norm = Vector3Normalize(diff);
+                //printv3(norm);
+                Vector3 targ = Vector3Add(Vector3Scale(norm, scale), bosspos);
+                bpcts[n].pos = Vector3Lerp(bpcts[n].pos, targ, 0.1);
+                // float dnz = Vector2Length((Vector2){norm.x, norm.y}) * SGN(norm.x) * SGN(norm.y);
+                // Vector2 norm2 = Vector2Normalize((Vector2){dnz, norm.z});
+                // bpcts[n].pos.z -= norm2.x;
+                // bpcts[n].pos.x += norm2.y;
+                // bpcts[n].pos.y -= norm2.y;
             } else {
-
-            bpcts[n].pos.z += 0.1 + (float)GetRandomValue(-100,100) / 50;
-            bpcts[n].pos.x += 0.1 + (float)GetRandomValue(-100,100) / 50 + oldx;
-            bpcts[n].pos.y += 0.1 + (float)GetRandomValue(-100,100) / 50;
-            bpcts[n].pos = Vector3Lerp(bpcts[n].pos, targ, 0.2);
-            }
+                
+                Vector3 norm = Vector3Normalize(diff);
+                
+                //printv3(norm);
+                Vector3 targ = Vector3Add(Vector3Scale(norm, 5), bosspos);
+                bpcts[n].pos.z += (float)GetRandomValue(-100,100) / 50;
+                bpcts[n].pos.x += (float)GetRandomValue(-100,100) / 50 + oldx;
+                bpcts[n].pos.y += (float)GetRandomValue(-100,100) / 50;
+                bpcts[n].pos = Vector3Lerp(bpcts[n].pos, targ, 0.2);
+                }
             drawptc2(bpcts[n].pos, PAL9);
         } else {
             bpcts[n].vel = Vector3Scale(bpcts[n].vel, 0.9);
