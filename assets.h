@@ -1,1 +1,2 @@
-X(asset_eviltree, "eviltree.png");
+X(eviltree);
+X(carfrwd);

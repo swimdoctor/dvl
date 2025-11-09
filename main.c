@@ -1,28 +1,36 @@
+#include "util.h"
 #include "raylib.h"
 #include "raymath.h"
+#include "map.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
 #include "world.h"
+#include <time.h>
 
 // ASSETS
-#define X(name, path) Image name;
+typedef struct {
+    int w, h;
+    Color* p;
+} Sprite;
+
+#define X(name) Sprite sprite_##name;
 #include "assets.h"
 #undef X 
 
 void
 loadass() {
-#define X(name, path) name = LoadImage("./" path);
+#define X(name) \
+    Image img_##name = LoadImage("./" #name ".png"); \
+    sprite_##name.w = img_##name.width ; \
+    sprite_##name.h = img_##name.height; \
+    sprite_##name.p = LoadImageColors(img_##name);
 #include "assets.h"
 #undef X 
 }
 
-const int
-GAMEW = 160,
-GAMEH = 90;
-
-#define GAMEW 320
-#define GAMEH 180
+#define GAMEW 160
+#define GAMEH 90
 #define ASPECT (float)GAMEW / (float)GAMEH
 #define TREESCALE 8
 
@@ -71,7 +79,7 @@ printv3(Vector3 vec) {
 }
 
 void
-drawbillboard(Vector3 billpos, Color* image) {
+drawbillboard(Vector3 billpos, Sprite sprite) {
     Quaternion rotate = QuaternionFromAxisAngle((Vector3) {0, 1, 0}, PI/2);
     rotate = QuaternionMultiply(QuaternionFromAxisAngle((Vector3) {1, 0, 0}, -Vector2Angle((Vector2){1, 0}, (Vector2) {billpos.x - cam.pos.x, billpos.y - cam.pos.y})), rotate);
     Vector3 localcampos = Vector3RotateByQuaternion(cam.pos, rotate);
@@ -110,14 +118,14 @@ drawbillboard(Vector3 billpos, Color* image) {
             ray = Vector3Add(ray, localcampos);
 
             
-            int imgx = (int)(ray.y * TREESCALE) + asset_eviltree.width / 2;
-            int imgy = asset_eviltree.height - (int)(ray.x * TREESCALE);
+            int imgx = (int)(ray.y * TREESCALE) + sprite.w / 2;
+            int imgy = sprite.h - (int)(ray.x * TREESCALE);
 
-            if(imgx < 0 || imgx >= asset_eviltree.width) continue;
+            if(imgx < 0 || imgx >= sprite.w) continue;
 
-            if(imgy < 0 || imgy >= asset_eviltree.height) continue;
+            if(imgy < 0 || imgy >= sprite.h) continue;
 
-            Color imgCol = image[imgy * asset_eviltree.width + imgx];
+            Color imgCol = sprite.p[imgy * sprite.w + imgx];
 
             if(imgCol.a == 0) continue;
             if(1000/Vector3LengthSqr(ray) < depth[y][x]) continue;
@@ -129,90 +137,123 @@ drawbillboard(Vector3 billpos, Color* image) {
 }
 
 
+/* Returns {0} if ray does not intersect ground */
+Vector3
+raytoground(int x, int y) { 
+    Vector2 uv = {(float)x / GAMEW * 2 - 1, (float)y / GAMEH * 2 - 1};
+    uv.x *= ASPECT;
+    uv.y *= -1;
+
+    Vector3 ray = cam.frwd;
+    ray = Vector3Add(ray, Vector3Scale(cam.side, uv.x * cam.foc_len));
+    ray = Vector3Add(ray, Vector3Scale(cam.up  , uv.y * cam.foc_len));
+    if(cam.roll != 0)
+        ray = Vector3RotateByAxisAngle(ray, cam.frwd, cam.roll);
+    
+
+    if (ray.z >= -0.0f) {
+        return Vector3Zero();
+    }
+
+    ray = Vector3Scale(ray, -cam.pos.z / ray.z);
+
+    return ray;
+}
+
 void
 drawground() {
     for (int x = 0; x < GAMEW; x++) {
         for (int y = 0; y < GAMEH; y++) {
             if (depth[y][x] > GROUND_DEPTH) continue;
+            Vector3 ray = raytoground(x, y);
 
-            Vector2 uv = {(float)x / GAMEW * 2 - 1, (float)y / GAMEH * 2 - 1};
-            uv.x *= ASPECT;
-            uv.y *= -1;
-
-            Vector3 ray = cam.frwd;
-            ray = Vector3Add(ray, Vector3Scale(cam.side, uv.x * cam.foc_len));
-            ray = Vector3Add(ray, Vector3Scale(cam.up  , uv.y * cam.foc_len));
-            if(cam.roll != 0)
-                ray = Vector3RotateByAxisAngle(ray, cam.frwd, cam.roll);
-            
-            if (ray.z >= -0.0f) {
+            if (ray.z == 0) {
                 grndpix[y][x] = sky;
                 continue;
             }
 
-            ray = Vector3Scale(ray, -cam.pos.z / ray.z);
-            Vector3 groundIntersect = Vector3Add(ray, cam.pos);
+            Vector3 intersect = Vector3Add(ray, cam.pos);
 
-            int grid = abs((int)groundIntersect.x) + abs((int)groundIntersect.y);
-            if(groundIntersect.x * groundIntersect.y < 0) grid++;
-            grid %= 2;
+            Color roadcol = RED;
+            if (isroad((int)intersect.x, (int)intersect.y))
+                roadcol = BLUE;
 
-            grndpix[y][x] = (Color) { grid * 255, grid * 255, grid * 255, 255 };
+            if ((int)intersect.x % 2 == 0) roadcol.b = 255;
+            if ((int)intersect.y % 2 == 0) roadcol.b = 128;
+
+            grndpix[y][x] = roadcol;
         }
     }
 }
 
+
 void
-docam() {
-    cam.pos.x = hro.pos.x / 100;
-    cam.pos.y = hro.pos.y / 100;
-    cam.pos.z = 1 / (hro.touched*0.1 + 0.4) + 0.5;
-    cam.frwd.x = hro.mom.x;
-    cam.frwd.y = hro.mom.y;
-
-    cam.frwd = Vector3Normalize(cam.frwd);
-    if(Vector3Equals(cam.frwd, Vector3Zero())) cam.frwd = (Vector3) {1, 0, 0};
-    cam.side = Vector3CrossProduct((Vector3){0, 0, 1}, cam.frwd);
-    cam.up   = Vector3CrossProduct(cam.frwd, cam.side);
-    
-    cam.foc_len = 1.0 / tan(cam.fov / 2.0);
-
-    //printf("pos = (%f, %f)\n", cam.pos.x, cam.pos.y);
+drawhro() {
+    Sprite sprite = sprite_carfrwd;
+    int sx = GAMEW/2 - sprite.w / 2;
+    int sy = GAMEH - sprite.h;
+    for (int x = 0; x < sprite.w; x++)
+        for (int y = 0; y < sprite.w; y++) {
+            if (sprite.p[y*sprite.w+x].a == 0) continue;
+            grndpix[sy+y][sx+x] = sprite.p[y*sprite.w+x];
+        }
 }
 
 #define HRO_SZ           16
-#define HRO_TURNACC      0.3
-#define HRO_ACC          0.15
+#define HRO_TURNACC      0.01
+#define HRO_LINACC       0.015
 #define HRO_LINDAMP      0.98
 #define HRO_TIMETOUCH    3
 #define HRO_TIMETOUCH1   20
 #define HRO_TIMETOUCH2   40
 #define HRO_TIMETOUCH3   80
 #define HRO_PRETOUCHDAMP 0.85
-#define HRO_TOUCHSP      20
+#define HRO_TOUCHSP      0.4
 
 #define HRO_TIMERAISE    3
 #define HRO_RAISEBOOST1  1.4
 #define HRO_RAISEBOOST2  2
 #define HRO_RAISEBOOST3  2.4
 
+#define HRO_COLBOUNCE    -0.4
+
+#define CAM_BACK         5
+#define CAM_Z            2.5
+#define CAM_LOOKZ        -0.1
+
+void
+docam() {
+    cam.pos.x = hro.pos.x - hro.mom.x * CAM_BACK;
+    cam.pos.y = hro.pos.y - hro.mom.y * CAM_BACK;
+    cam.pos.z = CAM_Z;
+    cam.frwd.x = hro.mom.x;
+    cam.frwd.y = hro.mom.y;
+    cam.frwd.z = CAM_LOOKZ;
+
+    cam.frwd = Vector3Normalize(cam.frwd);
+    cam.side = Vector3CrossProduct((Vector3){0, 0, 1}, cam.frwd);
+    cam.up   = Vector3CrossProduct(cam.frwd, cam.side);
+    
+    cam.foc_len = 1.0 / tan(cam.fov / 2.0);
+}
 void
 dohro() {
-    if (hro.mom.x == 0 && hro.mom.y == 0) hro.mom = (Vector2) {1,0};
+    if (IsKeyDown(KEY_R)) hro.sp = 0.04;
 
-    Vector2 frwd = Vector2Normalize(hro.mom);
+    if (hro.mom.x == 0 && hro.mom.y == 0) hro.mom = (Vector2) {1,0};
 
     bool left = IsKeyDown(KEY_LEFT ) || IsKeyDown(KEY_A);
     bool right = IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D);
     if      (left && !right)
-        hro.to = Vector2Rotate(frwd, -PI/2);
+        hro.to = Vector2Rotate(hro.mom, -PI/2);
     else if (right && !left)
-        hro.to = Vector2Rotate(frwd,  PI/2);
+        hro.to = Vector2Rotate(hro.mom,  PI/2);
     else
         hro.to = (Vector2){0};
 
-    hro.vel = Vector2Add(Vector2Scale(hro.mom, hro.sp), Vector2Scale(hro.to, HRO_TURNACC));
-    hro.mom = Vector2Normalize(hro.vel);
+    hro.mom = Vector2Scale(hro.mom, MAX(fabsf(hro.sp), 0.3));
+    hro.mom = Vector2Add(hro.mom, Vector2Scale(hro.to, HRO_TURNACC));
+    hro.mom = Vector2Normalize(hro.mom);
 
     if (IsKeyDown(KEY_SPACE) || IsKeyDown(KEY_J)) {
         hro.touched += 1;
@@ -223,8 +264,10 @@ dohro() {
         hro.touched = 0;
     }
 
-    if (hro.touched == 0)
-        hro.sp = (hro.sp + HRO_ACC) * HRO_LINDAMP;
+    if (hro.touched == 0) {
+        hro.sp = (hro.sp + HRO_LINACC);
+        if (hro.sp > 0) hro.sp *= HRO_LINDAMP;
+    }
     else if (hro.touched < HRO_TIMETOUCH)
         hro.sp = hro.sp * HRO_PRETOUCHDAMP;
     else 
@@ -239,16 +282,23 @@ dohro() {
             hro.sp *= HRO_RAISEBOOST1;
     }
 
-    hro.pos = Vector2Add(hro.pos, hro.vel);
+    Vector2 next = Vector2Add(hro.pos, Vector2Scale(hro.mom, hro.sp));
+    if (isroad((int)next.x, (int)next.y)) {
+        hro.pos = next;
+    } else {
+        hro.sp = HRO_COLBOUNCE * SGN(hro.sp);
+    }
 }
 
 int 
 main(void) {
+    SetTraceLogLevel(LOG_ERROR); 
+
     loadass();
+    loadmap();
 
     InitWindow(800, 450, "raylib [core] example - basic window");
-
-    Color* treecol = LoadImageColors(asset_eviltree);
+    SetWindowState(FLAG_WINDOW_RESIZABLE);
 
     Image img = GenImageColor(GAMEW, GAMEH, BLANK);
 
@@ -259,7 +309,7 @@ main(void) {
 
     float billboardPos = 0;
 
-    //SetTargetFPS(60);
+    SetTargetFPS(60);
     while (!WindowShouldClose()) {
         dohro();
         docam();
@@ -282,15 +332,16 @@ main(void) {
         //draw trees
         int index = 0;
         do{
-            drawbillboard((Vector3) {treeloc[index].x, treeloc[index].y, 0}, treecol);
+            drawbillboard((Vector3) {treeloc[index].x, treeloc[index].y, 0}, sprite_eviltree);
             index++;
         }
         while(!Vector2Equals(treeloc[index], Vector2Zero()));
         
         drawground();
+        drawhro();
+        UpdateTexture(grndtex, grndpix);
         UpdateTexture(billtex, billpix);
         UpdateTexture(parttex, partpix);
-        UpdateTexture(grndtex, grndpix);
 
         BeginDrawing();
             ClearBackground(RAYWHITE);
