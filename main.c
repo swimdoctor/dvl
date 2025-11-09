@@ -477,7 +477,7 @@ main(void) {
             DrawTexturePro(billtex, gamerect, winrect, Vector2Zero(), 0, tint);
             DrawTexturePro(parttex, gamerect, winrect, Vector2Zero(), 0, tint);
         EndDrawing();
-        //printf("%i\n", GetFPS());
+        //printf("%i\n", GetFPS());a
     }
 
     CloseWindow();
