@@ -725,8 +725,10 @@ int startframe = 0;
 int highscore = 0;
 void 
 drawhighscore() {
+    print("test");
     drawnotice2(sprite_highscore);
 
+    print("test2");
     int numx = 96;
     int numy = 42;
 
