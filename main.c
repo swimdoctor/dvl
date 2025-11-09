@@ -686,12 +686,14 @@ doenemies() {
     }
 }
 
+int startframe = 0;
+
 void
 donumbers() {
     int numx = 310;
     int numy = 4;
 
-    int framecount = frame;
+    int framecount = frame - startframe;
     int frac = (framecount % 60) * 100 / 60;
     int sec = framecount / 60;
 
@@ -929,7 +931,10 @@ main(void) {
         docam();
         doboss();
 
-        if (paused && IsKeyPressed(KEY_SPACE)) paused = false;
+        if (paused && IsKeyPressed(KEY_SPACE)) {
+            startFrame = frame;
+            paused = false;
+        }
         updatemusic();
 
         printf("player = %d %d\n", (int)hro.pos.x, (int)hro.pos.y);
