@@ -6,3 +6,7 @@ X(carturnr);
 X(cardriftl1);
 X(cardriftl2);
 X(carturnl);
+X(warning);
+X(target);
+X(speardemon);
+X(fleshthwomp);

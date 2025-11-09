@@ -77,22 +77,19 @@ typedef struct {
 #define Bez0 ((Bez) { 0, 0, 0, 0, 0 })
 
 static void
-circle(Boolchunk bc, float cx, float cy, float r) {
-    float minx = MAX(cx - r, 0), maxx = MIN(cx + r, CHUNKSZ-1),
-          miny = MAX(cy - r, 0), maxy = MIN(cy + r, CHUNKSZ-1);
-    for (float y = miny; y <= maxy; y++) {
-        for (float x = minx; x <= maxx; x++) {
-            float dx = x - cx, dy = y - cy;
-            if (dx*dx + dy*dy < r*r) {
-                bc[(int)y][(int)x] = true;
+circle(Boolchunk bc, float cx, float cy, float r, bool set) {
+    for (int y = 0; y < CHUNKSZ; y++)
+        for (int x = 0; x < CHUNKSZ; x++) {
+            float dx = (float)x - cx, dy = (float)y - cy;
+            if (dx*dx + dy*dy <= r*r) {
+                bc[(int)y][(int)x] = set;
             }
         }
-    }
 }
 
 static void
 bezier(Boolchunk bc, Bez* bn) {
-    for (Bez *a = &bn[0], *c = &bn[1]; c->w != 0; a++, c++) {
+    for (Bez *a = &bn[0], *c = &bn[1]; c->w; a++, c++) {
         float ax = (float)a->x, ay = (float)a->y, aw = (float)a->w,
               cx = (float)c->x, cy = (float)c->y, cw = (float)c->w;
         if (a->a == c->a && a->b == c->b) {
@@ -101,7 +98,7 @@ bezier(Boolchunk bc, Bez* bn) {
                 float nx = ax * (1-t) + cx * t,
                       ny = ay * (1-t) + cy * t,
                       nw = aw * (1-t) + cw * t;
-                circle(bc, nx, ny, nw);
+                circle(bc, nx, ny, nw, true);
             }
         } else {
             // points are not parallel, do cubic bezier curve a -> b -> c
@@ -123,7 +120,7 @@ bezier(Boolchunk bc, Bez* bn) {
                 float nx = (1-t) * (1-t) * ax + 2 * (1-t) * t * bx + t * t * cx,
                       ny = (1-t) * (1-t) * ay + 2 * (1-t) * t * by + t * t * cy,
                       nw = (1-t) * (1-t) * aw + 2 * (1-t) * t * bw + t * t * cw;
-                circle(bc, (int)nx, (int)ny, (int)nw);
+                circle(bc, (int)nx, (int)ny, (int)nw, true);
             }
         }
     }
@@ -165,11 +162,19 @@ isroad(int x, int y) {
     int h = hash(cpos) % NCHUNK;
     while (true) {
         if (chunks[h].edgeshapes == NULL) return false;
-        if (chunks[h].pos.x == cpos.x && chunks[h].pos.y == cpos.y)
+        if (chunks[h].pos.x == cpos.x && chunks[h].pos.y == cpos.y) {
             return chunkget(&chunks[h], x & CHUNKBM, y & CHUNKBM);
+        }
         h = (h + 1) % NCHUNK;
     }
 }
+
+#define LINEX(Y, R1, R2) \
+    (Bez) { 0, Y, 255, 1, R1  }, \
+    (Bez) { 63, Y, 255, 1, R2 }
+
+#define STARTCHUNK(BC) memset(BC, 0, sizeof(Boolchunk));
+#define ENDCHUNK(BC,X,Y) insertchunk((i16vec2){X,Y}, BC);
 
 void
 loadmap() {
@@ -178,16 +183,22 @@ loadmap() {
     chunks = calloc(NCHUNK, sizeof(Chunk));
 
     Boolchunk bc;
-    memset(bc, 0, sizeof(Boolchunk));
-    bezier(bc, (Bez[]){ (Bez) { 3, 1, 255, 1, 8  }, (Bez) { 64, 50, 1, 255, 8 }, Bez0, });
-    insertchunk((i16vec2){0,0}, bc);
-    memset(bc, 0, sizeof(Boolchunk));
-    bezier(bc, (Bez[]){ (Bez) { 0, 50, 255, 1, 6  }, (Bez) { 15, 64, 1, 255, 8 }, (Bez){15,0,255,1,16}, Bez0, });
-    insertchunk((i16vec2){1,0}, bc);
-    memset(bc, 0, sizeof(Boolchunk));
-    bezier(bc, (Bez[]){ (Bez) { 0, 64, 255, 1, 8  }, (Bez) { 64, 0, 1, 255, 16 }, Bez0, });
-    insertchunk((i16vec2){0,-1}, bc);
-    memset(bc, 0, sizeof(Boolchunk));
-    bezier(bc, (Bez[]){ (Bez) { 0, 0, 1, 255, 6  }, (Bez) { 15, 64, 255, 1, 16 }, Bez0, });
-    insertchunk((i16vec2){1,-1}, bc);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(32, 8, 16), Bez0, });
+    ENDCHUNK(bc, 0, 0);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(32, 16, 8), Bez0, });
+    ENDCHUNK(bc, 1, 0);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(32, 8, 16), Bez0, });
+    ENDCHUNK(bc, 2, 0);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(32, 16, 8), Bez0, });
+    ENDCHUNK(bc, 3, 0);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(32, 8, 16), Bez0, });
+    ENDCHUNK(bc, 4, 0);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(32, 16, 8), Bez0, });
+    ENDCHUNK(bc, 5, 0);
 }

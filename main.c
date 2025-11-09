@@ -8,6 +8,7 @@
 #include <math.h>
 #include <time.h>
 #include <string.h>
+#include "enemies.h"
 
 #define PAL1 (Color) {  11,  16,  22, 255 }
 #define PAL2 (Color) {  20,  31,  37, 255 }
@@ -77,6 +78,10 @@ depth[GAMEH][GAMEW];
 
 #define GROUND_DEPTH 0
 
+Enemy* enemyqueue[100];
+int queuecount = 0;
+#define TRIGGERRANGE 4
+
 struct {
     Vector2 pos;
     Vector2 mom;
@@ -87,7 +92,9 @@ struct {
     int touched;
     int raised;
 } 
-hro = {0};
+hro = {
+    .pos = {32, 32},
+};
 
 struct {
     Vector3 pos;
@@ -110,7 +117,7 @@ printv3(Vector3 vec) {
 }
 
 void
-drawbillboard(Vector3 billpos, Sprite sprite) {
+drawbillboard(Vector3 billpos, Sprite sprite, int scale) {
     Quaternion rotate = QuaternionFromAxisAngle((Vector3) {0, 1, 0}, PI/2);
     rotate = QuaternionMultiply(QuaternionFromAxisAngle((Vector3) {1, 0, 0}, -Vector2Angle((Vector2){1, 0}, (Vector2) {billpos.x - cam.pos.x, billpos.y - cam.pos.y})), rotate);
     Vector3 localcampos = Vector3RotateByQuaternion(cam.pos, rotate);
@@ -139,8 +146,8 @@ drawbillboard(Vector3 billpos, Sprite sprite) {
             ray = Vector3Scale(ray, -localcampos.z / ray.z);
             ray = Vector3Add(ray, localcampos);
 
-            int imgx = (int)(ray.y * TREESCALE) + sprite.w / 2;
-            int imgy = sprite.h - (int)(ray.x * TREESCALE);
+            int imgx = (int)(ray.y * scale) + sprite.w / 2;
+            int imgy = sprite.h - (int)(ray.x * scale);
 
             if(imgx < 0 || imgx >= sprite.w) continue;
 
@@ -155,6 +162,26 @@ drawbillboard(Vector3 billpos, Sprite sprite) {
             billpix[y][x] = imgcol;
         }
     }
+}
+
+Vector2
+worldtoscreen(Vector3 vec) {
+    Vector3 ray = Vector3Subtract(vec, cam.pos);
+    if(Vector3DotProduct(ray, cam.frwd) <= 0) return (Vector2) {-1, -1};
+    ray = Vector3Scale(Vector3Normalize(ray), 1/cos(Vector3Angle(ray, cam.frwd)));
+    
+    Vector2 uv = {Vector3DotProduct(ray, cam.side) / cam.foc_len, 
+                  Vector3DotProduct(ray, cam.up  ) / cam.foc_len};
+    
+    float x = uv.x;
+    x /= (ASPECT);
+    x += 1;
+    x /= 2;
+    x *= GAMEW;
+
+    float y = GAMEH * (uv.y * -1 + 1) / 2;
+
+    return (Vector2) {x, y};
 }
 
 /* Returns {0} if ray does not intersect ground */
@@ -202,6 +229,22 @@ drawground() {
             } else {
                 if ((wx + wy) % 6 > 3) roadcol = PAL7;
                 else                   roadcol = PAL9;
+            }
+
+            for(int i = 0; i < queuecount; i++) {
+                if(Vector2DistanceSqr(enemyqueue[i]->pos, (Vector2){ray.x + cam.pos.x, ray.y + cam.pos.y}) < 4) {
+                    int spritex = (int)((ray.x + cam.pos.x - enemyqueue[i]->pos.x) * 8); 
+                    int spritey = (int)((ray.y + cam.pos.y - enemyqueue[i]->pos.y) * 8);
+
+                    spritex += 16;
+                    spritey += 16;
+
+                    if(spritex >= 0 && spritex < 32 && spritey >= 0 && spritey < 32){
+                        if(sprite_target.p[spritey * sprite_target.w + spritex].a == 255){
+                            roadcol = ColorLerp(roadcol, sprite_target.p[spritey * sprite_target.w + spritex], 0.5);
+                        }
+                    }                    
+                }
             }
 
             grndpix[y][x] = roadcol;
@@ -305,6 +348,68 @@ dohro() {
     }
 }
 
+void
+doenemies() {
+    for(int i = 0; i < enemycount; i++) {
+        if(!enemies[i].triggered) {
+            Vector2 screen = worldtoscreen((Vector3){enemies[i].trigger.x, enemies[i].trigger.y, 0});
+            if(screen.x >= 0 && screen.y >= 0 && screen.x < GAMEW && screen.y < GAMEH)
+                partpix[(int)screen.y][(int)screen.x] = (Color) {255, 255, 255, 255};
+
+            if(Vector2DistanceSqr(hro.pos, enemies[i].trigger) < TRIGGERRANGE * TRIGGERRANGE) {
+                printf("Triggered enemy %i\n", i);
+                enemyqueue[queuecount] = &(enemies[i]);
+                enemyqueue[queuecount]->triggered = true;
+                enemyqueue[queuecount]->timer = enemyqueue[queuecount]->delay * 60;
+                queuecount++;
+            }
+        }
+    }
+
+    for(int i = 0; i < queuecount; i++) {
+        enemyqueue[i]->timer--;
+        if(sin(enemyqueue[i]->timer / 8) > 0){
+            drawbillboard(Vector3Add(cam.pos, Vector3Add(Vector3Scale(cam.frwd, 8), Vector3Scale(cam.side, enemyqueue[i]->road))), sprite_warning, 16);
+        }
+        float zpos = 15;
+        if(enemyqueue[i]->timer < 30) {
+            zpos = enemyqueue[i]->timer/2;
+        }
+
+        switch(enemyqueue[i]->type) {
+            case SPEAR:
+                drawbillboard((Vector3) {enemyqueue[i]->pos.x, enemyqueue[i]->pos.y, zpos}, sprite_speardemon, 4);
+                break;
+            case THWOMP:
+                drawbillboard((Vector3) {enemyqueue[i]->pos.x, enemyqueue[i]->pos.y, zpos}, sprite_fleshthwomp, 3);
+                break;
+            default:
+                break;
+        }
+
+        if(enemyqueue[i]->timer <= 0) {
+            float enemyRange = 0;
+            switch(enemyqueue[i]->type) {
+                case SPEAR:  enemyRange = 2.5f; break;
+                case THWOMP: enemyRange = 5;    break;
+                default:     enemyRange = 0;    break;
+            }
+
+
+            if(Vector2Distance(hro.pos, enemyqueue[i]->pos) < enemyRange) {
+                hro.sp = 0;
+                printf("YOUVE BEEN HIT");
+            }
+
+            enemyqueue[i]->timer = -1;
+            queuecount--;
+            for(int j = i; j < queuecount - 1; j++) {
+                enemyqueue[j] = enemyqueue[j + 1];
+            }
+        }
+    }
+}
+
 int 
 main(void) {
     SetTraceLogLevel(LOG_ERROR); 
@@ -331,16 +436,27 @@ main(void) {
         memset(grndpix, 0, sizeof(grndpix));
         memset(depth, 0, sizeof(depth));
 
+        doenemies();
+
         //draw trees
         int index = 0;
         do{
-            drawbillboard((Vector3) {treeloc[index].x, treeloc[index].y, 0}, sprite_eviltree);
+            drawbillboard((Vector3) {treeloc[index].x, treeloc[index].y, 0}, sprite_eviltree, 8);
             index++;
         }
         while(!Vector2Equals(treeloc[index], Vector2Zero()));
         
         drawground();
         drawhro();
+
+        Vector2 screen = worldtoscreen((Vector3){5, 5, 2.5});
+        /*if(screen.x >= 0 && screen.y >= 0 && screen.x < GAMEW && screen.y < GAMEH)
+            partpix[(int)screen.y][(int)screen.x] = (Color) {255, 255, 255, 255};*/
+        screen = worldtoscreen((Vector3){30, 40, 0});
+        if(screen.x >= 0 && screen.y >= 0 && screen.x < GAMEW && screen.y < GAMEH)
+            partpix[(int)screen.y][(int)screen.x] = (Color) {255, 0, 0, 255};
+
+
         UpdateTexture(grndtex, grndpix);
         UpdateTexture(billtex, billpix);
         UpdateTexture(parttex, partpix);
@@ -357,10 +473,11 @@ main(void) {
                 tint = BLUE;
             Rectangle gamerect = (Rectangle){0,0,GAMEW,GAMEH};
             Rectangle winrect  = (Rectangle){0,0,GetScreenWidth(),GetScreenHeight()};
-           // DrawTexturePro(parttex, gamerect, winrect, Vector2Zero(), 0, tint);
             DrawTexturePro(grndtex, gamerect, winrect, Vector2Zero(), 0, tint);
             DrawTexturePro(billtex, gamerect, winrect, Vector2Zero(), 0, tint);
+            DrawTexturePro(parttex, gamerect, winrect, Vector2Zero(), 0, tint);
         EndDrawing();
+        //printf("%i\n", GetFPS());
     }
 
     CloseWindow();
