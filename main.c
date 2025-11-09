@@ -117,6 +117,9 @@ depth[GAMEH][GAMEW];
 
 #define GROUND_DEPTH 0
 
+int billcount = 0;
+int partcount = 0;
+
 int queuecount = 0;
 #define TRIGGERRANGE 50
 
@@ -169,6 +172,7 @@ worldtoscreen(Vector3 vec) {
     x *= GAMEW;
 
     float y = GAMEH * (uv.y * -1 + 1) / 2;
+    partcount++;
 
     return (Vector3) {x, y, Vector3Length(ray)};
 }
@@ -187,7 +191,9 @@ drawbillboard(Vector3 billpos, Sprite sprite, int scale) {
     Vector3 localcamfrwd = Vector3RotateByQuaternion(cam.frwd, rotate);
     Vector3 localcamside = Vector3RotateByQuaternion(cam.side, rotate);
     Vector3 localcamup = Vector3RotateByQuaternion(cam.up, rotate);
-
+    
+    billcount++;
+    
     for (int x = 0; x < GAMEW; x++) {
         for (int y = 0; y < GAMEH; y++) {
             Vector2 uv = {(float)x / GAMEW * 2 - 1, (float)y / GAMEH * 2 - 1};
@@ -200,6 +206,7 @@ drawbillboard(Vector3 billpos, Sprite sprite, int scale) {
             ray = Vector3Add(ray, Vector3Scale(localcamup  , uv.y * cam.foc_len));
             if(cam.roll != 0)
                 ray = Vector3RotateByAxisAngle(ray, localcamfrwd, cam.roll);
+            
             
             if (ray.z >= -0.001f) {
                 continue;
@@ -717,6 +724,8 @@ main(void) {
 
     SetTargetFPS(60);
     while (!WindowShouldClose()) {
+        partcount = 0;
+        billcount = 0;
         if (!paused) dohro();
         docam();
 
@@ -761,6 +770,10 @@ main(void) {
         EndDrawing();
 
         frame++;
+
+        if(true){
+            printf("Framerate: %i, Billboards: %i, Particles: %i\n", GetFPS(), billcount, partcount);
+        }
     }
 
     CloseWindow();
