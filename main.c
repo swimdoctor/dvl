@@ -10,13 +10,28 @@
 #include <string.h>
 #include "enemies.h"
 
-#define PAL1 (Color) {  11,  16,  22, 255 }
-#define PAL2 (Color) {  20,  31,  37, 255 }
-#define PAL3 (Color) {  31,  45,  54, 255 }
-#define PAL4 (Color) {  33,  37,  40, 255 }
+#define PAL1  (Color) {  11,  16,  22, 255 }
+#define PAL2  (Color) {  20,  31,  37, 255 }
+#define PAL3  (Color) {  31,  45,  54, 255 }
+#define PAL4  (Color) {  33,  37,  40, 255 }
 
-#define PAL7 (Color) {  86,  41,  35, 255 }
-#define PAL9 (Color) { 102,  53,  46, 255 }
+#define PAL7  (Color) {  86,  41,  35, 255 }
+#define PAL9  (Color) { 102,  53,  46, 255 }
+
+#define PAL9  (Color) { 102,  53,  46, 255 }
+#define PAL10 (Color) {  97,  38,  56, 255 }
+
+#define PAL25 (Color) { 131,  71,  61, 255 }
+#define PAL28 (Color) { 144, 124, 117, 255 }
+
+#define PAL30 (Color) { 166, 136,  74, 255 }
+#define PAL34 (Color) {  78, 116, 153, 255 }
+
+#define PAL34 (Color) {  78, 116, 153, 255 }
+#define PAL36 (Color) { 175, 158, 148, 255 }
+#define PAL37 (Color) { 135, 158, 163, 255 }
+#define PAL38 (Color) { 189, 187, 174, 255 }
+#define PAL39 (Color) { 227, 221, 209, 255 }
 
 #define HRO_SZ           16
 #define HRO_TURNACC      0.01
@@ -31,16 +46,26 @@
 
 #define HRO_TIMERAISE    3
 #define HRO_RAISEBOOST1  1.4
-#define HRO_RAISEBOOST2  2
-#define HRO_RAISEBOOST3  2.4
+#define HRO_RAISEBOOST2  2.4
+#define HRO_RAISEBOOST3  3
 
 #define HRO_COLBOUNCE    -0.4
 
-#define CAM_BACK         5
+#define CAM_BACK         7
+#define CAM_KICK         7
+#define CAM_FOVKICK      0.5
+#define CAM_KICKSPEED    0.1
 #define CAM_Z            2.5
 #define CAM_LOOKZ        -0.1
+#define CAM_ROLLA        0.04
+#define CAM_ROLLB        0.12
+#define CAM_ROLLC        0.2
+#define CAM_ROLLACCA     0.2
+#define CAM_ROLLACCB     0.6
+#define CAM_ROLLSPEEDA   0.2
+#define CAM_ROLLSPEEDB   0.4
 
-// ASSETS
+// SPRITES
 typedef struct {
     int w, h;
     Color* p;
@@ -50,6 +75,12 @@ typedef struct {
 #include "assets.h"
 #undef X 
 
+#define M(name) Music audio_##name;
+#define S(name) Sound audio_##name;
+#include "sounds.h"
+#undef M 
+#undef S 
+
 void
 loadass() {
 #define X(name) \
@@ -57,8 +88,13 @@ loadass() {
     sprite_##name.w = img_##name.width ; \
     sprite_##name.h = img_##name.height; \
     sprite_##name.p = LoadImageColors(img_##name);
-#include "assets.h"
+#   include "assets.h"
 #undef X 
+#define M(name) audio_##name = LoadMusicStream("./" #name ".wav");
+#define S(name) audio_##name = LoadSound("./" #name ".wav");
+#   include "sounds.h"
+#undef M
+#undef S
 }
 
 #define GAMEW 160
@@ -72,7 +108,7 @@ sky = {100, 100, 255, 255};
 Color
 grndpix[GAMEH][GAMEW] = {0},
 billpix[GAMEH][GAMEW] = {0},
-partpix[GAMEH][GAMEW] = {0};
+ptcpix[GAMEH][GAMEW] = {0};
 float
 depth[GAMEH][GAMEW];
 
@@ -87,6 +123,7 @@ struct {
     Vector2 mom;
     Vector2 to;
     Vector2 vel;
+    float ang;
     float sp;
     int prevtouched;
     int touched;
@@ -101,7 +138,8 @@ struct {
     Vector3 frwd;
     Vector3 side;
     Vector3 up;
-    float roll;
+    float kick;
+    float roll, rollvel;
     float fov;
     float foc_len;
 } 
@@ -110,6 +148,27 @@ cam = {
     .frwd = {1,0,0},
     .fov = PI / 2,
 };
+
+Vector3
+worldtoscreen(Vector3 vec) {
+    Vector3 ray = Vector3Subtract(vec, cam.pos);
+    if(Vector3DotProduct(ray, cam.frwd) <= 0) return (Vector3) {-1, -1, -1};
+    Vector3 scaledray = 
+        Vector3Scale(Vector3Normalize(ray), 1/cos(Vector3Angle(ray, cam.frwd)));
+    
+    Vector2 uv = {Vector3DotProduct(scaledray, cam.side) / cam.foc_len, 
+                  Vector3DotProduct(scaledray, cam.up  ) / cam.foc_len};
+    
+    float x = uv.x;
+    x /= (ASPECT);
+    x += 1;
+    x /= 2;
+    x *= GAMEW;
+
+    float y = GAMEH * (uv.y * -1 + 1) / 2;
+
+    return (Vector3) {x, y, Vector3Length(ray)};
+}
 
 void 
 printv3(Vector3 vec) {
@@ -214,7 +273,12 @@ drawground() {
             Vector3 ray = raytoground(x, y);
 
             if (ray.z == 0) {
-                grndpix[y][x] = sky;
+                Color skycol;
+                if      (y <  8) skycol = PAL28;
+                else if (y < 20) skycol = PAL36;
+                else if (y < 34) skycol = PAL38;
+                else if (y < 50) skycol = PAL39;
+                grndpix[y][x] = skycol;
                 continue;
             }
 
@@ -227,8 +291,8 @@ drawground() {
                 if (r & 0x800) roadcol = PAL2;
                 else           roadcol = PAL1;
             } else {
-                if ((wx + wy) % 6 > 3) roadcol = PAL7;
-                else                   roadcol = PAL9;
+                if (((wx + wy) & 0b100)) roadcol = PAL7;
+                else                     roadcol = PAL9;
             }
 
             for(int i = 0; i < queuecount; i++) {
@@ -253,40 +317,175 @@ drawground() {
 }
 
 void
-drawhro() {
-    float ang = Vector2Angle(hro.mom, hro.to);
-    Sprite sprite = sprite_carfrwd;
+drawptc(Vector3 pos, Color col, int rot) {
+    Vector3 spos = worldtoscreen(pos);
+    int x = (int)spos.x, y = (int)spos.y;
+    if (0 <= x && x < GAMEW && 0 <= y && y < GAMEH)
+        grndpix[y][x] = col;
+    switch (rot) {
+    case 0: x -= 1; break;
+    case 1: x += 1; break;
+    case 2: y -= 1; break;
+    case 3: y += 1; break;
+    }
+    if (0 <= x && x < GAMEW && 0 <= y && y < GAMEH)
+        grndpix[y][x] = col;
+}
 
-    if (fabsf(ang) < 3) {
+typedef struct {
+    Vector3 pos;
+    Vector3 vel;
+    int life;
+    unsigned char rot;
+    bool back;
+} Touch_Ptc;
+
+#define NTOUCHPTC 60
+Touch_Ptc touch_ptcs[NTOUCHPTC] = {0};
+int tptcidx = 0;
+
+void
+drawhro() {
+    if (IsKeyDown(KEY_Y)) return;
+
+    Sprite *sprite = &sprite_carfrwd;
+
+    if (fabsf(hro.ang) < 3) {
         if (hro.touched > HRO_TIMETOUCH2) {
-            if      (ang < -1.544) sprite = sprite_cardriftr2;
-            else if (ang >  1.544) sprite = sprite_cardriftl2;
+            if      (hro.ang < -1.544) sprite = &sprite_cardriftr2;
+            else if (hro.ang >  1.544) sprite = &sprite_cardriftl2;
         } else if (hro.touched) {
-            if      (ang < -1.544) sprite = sprite_cardriftr1;
-            else if (ang >  1.544) sprite = sprite_cardriftl1;
+            if      (hro.ang < -1.544) sprite = &sprite_cardriftr1;
+            else if (hro.ang >  1.544) sprite = &sprite_cardriftl1;
         } else {
-            if      (ang < -1.544) sprite = sprite_carturnr;
-            else if (ang >  1.544) sprite = sprite_carturnl;
+            if      (hro.ang < -1.544) sprite = &sprite_carturnr;
+            else if (hro.ang >  1.544) sprite = &sprite_carturnl;
         }
     }
 
-    int sx = GAMEW/2 - sprite.w / 2;
-    int sy = GAMEH - sprite.h;
-    for (int x = 0; x < sprite.w; x++)
-        for (int y = 0; y < sprite.h; y++) {
-            if (sprite.p[y*sprite.w+x].a == 0) continue;
-            grndpix[sy+y][sx+x] = sprite.p[y*sprite.w+x];
+    Vector3 hro_frnt = worldtoscreen((Vector3){hro.pos.x, hro.pos.y, 0});
+    int hfx = (int)hro_frnt.x, hfy = (int)hro_frnt.y;
+
+    for (Touch_Ptc *ptc = touch_ptcs; ptc <= &touch_ptcs[NTOUCHPTC-1]; ptc++) {
+        ptc->pos = Vector3Add(ptc->pos, ptc->vel);
+        ptc->vel.z -= 0.2;
+        if (ptc->life) ptc->life--;
+        ptc->rot = (ptc->rot + 1) % 4;
+    }
+
+    if (hro.touched) {
+        typedef struct { int x, y; } P;
+        P ps[4] = {0};
+        int pimax = 3;
+        bool back = false;
+        Vector3 vel = (Vector3) {
+            (float)GetRandomValue(-100,100) / 500,
+            (float)GetRandomValue(-100,100) / 500,
+            0.3,
+        };
+        float velz = 0.3;
+        if (sprite == &sprite_carfrwd) {
+            ps[0] = (P){-12,20}; ps[1] = (P){12,20};
+            ps[2] = (P){-12,10}; ps[3] = (P){12,10};
+        } else if (sprite == &sprite_cardriftr1) {
+            ps[0] = (P){-15,10}; ps[1] = (P){-10,22};
+            ps[2] = (P){17,26};
+            pimax = 2;
+        } else if (sprite == &sprite_cardriftl1) {
+            ps[0] = (P){15,10}; ps[1] = (P){10,22};
+            ps[2] = (P){-17,26};
+            pimax = 2;
+        } else if (sprite == &sprite_cardriftr2) {
+            ps[0] = (P){-8,6}; ps[1] = (P){6,22};
+            pimax = 1;
+            vel.z = hro.touched > HRO_TIMETOUCH3 ? 0.9 : 0.5;
+            vel.x = vel.x + cam.side.x * 0.1 + hro.mom.x * 0.2;
+            vel.y = vel.y + cam.side.y * 0.1 + hro.mom.y * 0.2;
+        } else if (sprite == &sprite_cardriftl2) {
+            ps[0] = (P){ 8,6}; ps[1] = (P){-6,22};
+            pimax = 1;
+            vel.z = hro.touched > HRO_TIMETOUCH3 ? 0.9 : 0.5;
+            vel.x = vel.x + cam.side.x * 0.1 + hro.mom.x * 0.2;
+            vel.y = vel.y + cam.side.y * 0.1 + hro.mom.y * 0.2;
         }
+
+        for (int i = 0; i < 6; i++) {
+            int pi = GetRandomValue(0, pimax);
+
+            touch_ptcs[tptcidx] = (Touch_Ptc) {
+                .pos = Vector3Add(cam.pos, raytoground(hfx+ps[pi].x, hfy+ps[pi].y)),
+                .vel = vel,
+                .life = 100,
+                .back = back,
+            };
+            tptcidx = (tptcidx + 1) % NTOUCHPTC;
+        }
+    }
+    
+
+    Color touchcol = BLANK;
+    if      (hro.touched > HRO_TIMETOUCH3) touchcol = PAL30;
+    else if (hro.touched > HRO_TIMETOUCH2) touchcol = PAL25;
+    else if (hro.touched >              0) touchcol = PAL37;
+    if (touchcol.a)
+        for (int i = 0; i < NTOUCHPTC; i++)
+            if (touch_ptcs[i].life && touch_ptcs[i].back) 
+                drawptc(touch_ptcs[i].pos, touchcol, touch_ptcs[i].rot);
+
+    int minx = hfx - sprite->w / 2, maxx = hfx + sprite->w / 2;
+    int miny = hfy, maxy = hfy + sprite->h;
+    for (int x = MAX(minx, 0); x < MIN(maxx, GAMEW); x++)
+        for (int y = MAX(miny, 0); y < MIN(maxy, GAMEH); y++) {
+            Color p = sprite->p[(y - miny) * sprite->w + (x - minx)];
+            if (p.a == 0) continue;
+            grndpix[y][x] = p;
+        }
+
+    if (touchcol.a)
+        for (int i = 0; i < NTOUCHPTC; i++)
+            if (touch_ptcs[i].life && !touch_ptcs[i].back) 
+                drawptc(touch_ptcs[i].pos, touchcol, touch_ptcs[i].rot);
 }
 
 void
 docam() {
-    cam.pos.x = hro.pos.x - hro.mom.x * CAM_BACK;
-    cam.pos.y = hro.pos.y - hro.mom.y * CAM_BACK;
+    float kicktarg = MAX(MIN(hro.sp, 1), 0.5) * 2 - 1;
+    cam.kick = LERP(cam.kick, kicktarg, CAM_KICKSPEED);
+    cam.pos.x = hro.pos.x - hro.mom.x * (CAM_BACK + CAM_KICK * cam.kick);
+    cam.pos.y = hro.pos.y - hro.mom.y * (CAM_BACK + CAM_KICK * cam.kick);
     cam.pos.z = CAM_Z;
     cam.frwd.x = hro.mom.x;
     cam.frwd.y = hro.mom.y;
     cam.frwd.z = CAM_LOOKZ;
+
+    if (IsKeyDown(KEY_Y)) {
+        cam.pos.z = hro.pos.x;
+        cam.pos.z = hro.pos.y;
+        cam.pos.z = 500;
+        cam.fov = 0.1;
+        cam.frwd.x = 0.01;
+        cam.frwd.y = 0.01;
+        cam.frwd.z = -1;
+    } else {
+        cam.fov = PI/2 - cam.kick * CAM_FOVKICK;
+    }
+
+    float rolltarg = 0;
+    if (hro.touched > HRO_TIMETOUCH3) {
+        if      (hro.ang < -1.544) rolltarg =  CAM_ROLLC;
+        else if (hro.ang >  1.544) rolltarg = -CAM_ROLLC;
+    } else if (hro.touched > HRO_TIMETOUCH2) {
+        if      (hro.ang < -1.544) rolltarg =  CAM_ROLLB;
+        else if (hro.ang >  1.544) rolltarg = -CAM_ROLLB;
+    } else if (hro.touched) {
+        if      (hro.ang < -1.544) rolltarg =  CAM_ROLLA;
+        else if (hro.ang >  1.544) rolltarg = -CAM_ROLLA;
+    }
+    float rollveltarg = (rolltarg - cam.roll) *
+           (hro.touched ? CAM_ROLLACCA : CAM_ROLLACCB);
+    float lerps = hro.touched ? CAM_ROLLSPEEDA : CAM_ROLLSPEEDB;
+    cam.rollvel = LERP(cam.rollvel, rollveltarg, lerps); 
+    cam.roll += cam.rollvel;
 
     cam.frwd = Vector3Normalize(cam.frwd);
     cam.side = Vector3CrossProduct((Vector3){0, 0, 1}, cam.frwd);
@@ -294,6 +493,19 @@ docam() {
     
     cam.foc_len = 1.0 / tan(cam.fov / 2.0);
 }
+
+float
+rangefalloff(float val, float min, float max, float falloff) {
+    if (min <= val && val <= max) return 1;
+    
+    float lf = falloff * (val - min) + 1;
+    if (0 < lf && lf < 1) return 3 * lf * lf - 2 * lf * lf * lf;
+    float rf = falloff * (max - val) + 1;
+    if (0 < rf && rf < 1) return 3 * rf * rf - 2 * rf * rf * rf;
+
+    return 0;
+}
+
 void
 dohro() {
     if (IsKeyDown(KEY_R)) hro.sp = 0.04;
@@ -331,13 +543,14 @@ dohro() {
     else 
         hro.sp = HRO_TOUCHSP;
 
-    if (hro.raised == HRO_TIMERAISE) {
+    if (hro.raised == HRO_TIMERAISE && hro.prevtouched) {
         if (hro.prevtouched > HRO_TIMETOUCH3)
             hro.sp *= HRO_RAISEBOOST3;
         else if (hro.prevtouched > HRO_TIMETOUCH2)
             hro.sp *= HRO_RAISEBOOST2;
         else if (hro.prevtouched > HRO_TIMETOUCH1)
             hro.sp *= HRO_RAISEBOOST1;
+        PlaySound(audio_bonk);
     }
 
     Vector2 next = Vector2Add(hro.pos, Vector2Scale(hro.mom, hro.sp));
@@ -346,15 +559,40 @@ dohro() {
     } else {
         hro.sp = HRO_COLBOUNCE * SGN(hro.sp);
     }
+
+    hro.ang = Vector2Angle(hro.mom, hro.to);
+
+    SetMusicVolume(audio_drift3, rangefalloff((float)hro.touched, HRO_TIMETOUCH3,         9999.0, 0.3));
+    SetMusicVolume(audio_drift2, rangefalloff((float)hro.touched, HRO_TIMETOUCH2, HRO_TIMETOUCH3, 0.3));
+    SetMusicVolume(audio_drift1, rangefalloff((float)hro.touched, HRO_TIMETOUCH1, HRO_TIMETOUCH2, 0.3));
+    SetMusicVolume(audio_drift0, rangefalloff((float)hro.touched,              1, HRO_TIMETOUCH2, 1));
+    SetMusicPitch(audio_bigrev, MAX(hro.sp*1.4, 0.2));
+
+    UpdateMusicStream(audio_bigrev);
+    UpdateMusicStream(audio_drift0);
+    UpdateMusicStream(audio_drift1);
+    UpdateMusicStream(audio_drift2);
+    UpdateMusicStream(audio_drift3);
+
+    
+}
+
+void
+hrosndinit() {
+    PlayMusicStream(audio_bigrev);
+    PlayMusicStream(audio_drift0);
+    PlayMusicStream(audio_drift1);
+    PlayMusicStream(audio_drift2);
+    PlayMusicStream(audio_drift3);
 }
 
 void
 doenemies() {
     for(int i = 0; i < enemycount; i++) {
         if(!enemies[i].triggered) {
-            Vector2 screen = worldtoscreen((Vector3){enemies[i].trigger.x, enemies[i].trigger.y, 0});
+            Vector3 screen = worldtoscreen((Vector3){enemies[i].trigger.x, enemies[i].trigger.y, 0});
             if(screen.x >= 0 && screen.y >= 0 && screen.x < GAMEW && screen.y < GAMEH)
-                partpix[(int)screen.y][(int)screen.x] = (Color) {255, 255, 255, 255};
+                ptcpix[(int)screen.y][(int)screen.x] = (Color) {255, 255, 255, 255};
 
             if(Vector2DistanceSqr(hro.pos, enemies[i].trigger) < TRIGGERRANGE * TRIGGERRANGE) {
                 printf("Triggered enemy %i\n", i);
@@ -412,18 +650,23 @@ doenemies() {
 
 int 
 main(void) {
+    printf("----\n");
     SetTraceLogLevel(LOG_ERROR); 
+
+    InitWindow(800, 450, "raylib [core] example - basic window");
+    InitAudioDevice();
 
     loadass();
     loadmap();
+    hrosndinit();
 
-    InitWindow(800, 450, "raylib [core] example - basic window");
     SetWindowState(FLAG_WINDOW_RESIZABLE);
 
     Image img = GenImageColor(GAMEW, GAMEH, BLANK);
     Texture2D grndtex = LoadTextureFromImage(img);
     Texture2D billtex = LoadTextureFromImage(img);
-    Texture2D parttex = LoadTextureFromImage(img);
+    Texture2D ptctex  = LoadTextureFromImage(img);
+    hro.pos = (Vector2){32,32};
 
     SetTargetFPS(60);
     while (!WindowShouldClose()) {
@@ -432,7 +675,7 @@ main(void) {
 
         //Clear pixel buffers
         memset(billpix, 0, sizeof(billpix));
-        memset(partpix, 0, sizeof(partpix));
+        memset(ptcpix , 0, sizeof(ptcpix ));
         memset(grndpix, 0, sizeof(grndpix));
         memset(depth, 0, sizeof(depth));
 
@@ -449,33 +692,21 @@ main(void) {
         drawground();
         drawhro();
 
-        Vector2 screen = worldtoscreen((Vector3){5, 5, 2.5});
-        /*if(screen.x >= 0 && screen.y >= 0 && screen.x < GAMEW && screen.y < GAMEH)
-            partpix[(int)screen.y][(int)screen.x] = (Color) {255, 255, 255, 255};*/
-        screen = worldtoscreen((Vector3){30, 40, 0});
-        if(screen.x >= 0 && screen.y >= 0 && screen.x < GAMEW && screen.y < GAMEH)
-            partpix[(int)screen.y][(int)screen.x] = (Color) {255, 0, 0, 255};
+
 
 
         UpdateTexture(grndtex, grndpix);
         UpdateTexture(billtex, billpix);
-        UpdateTexture(parttex, partpix);
+        UpdateTexture(ptctex , ptcpix );
 
         BeginDrawing();
             ClearBackground(RAYWHITE);
 
-            Color tint = WHITE;
-            if (hro.touched > HRO_TIMETOUCH3)
-                tint = RED;
-            else if (hro.touched > HRO_TIMETOUCH2)
-                tint = GREEN;
-            else if (hro.touched > HRO_TIMETOUCH1)
-                tint = BLUE;
             Rectangle gamerect = (Rectangle){0,0,GAMEW,GAMEH};
             Rectangle winrect  = (Rectangle){0,0,GetScreenWidth(),GetScreenHeight()};
-            DrawTexturePro(grndtex, gamerect, winrect, Vector2Zero(), 0, tint);
-            DrawTexturePro(billtex, gamerect, winrect, Vector2Zero(), 0, tint);
-            DrawTexturePro(parttex, gamerect, winrect, Vector2Zero(), 0, tint);
+            DrawTexturePro(grndtex, gamerect, winrect, Vector2Zero(), 0, WHITE);
+            DrawTexturePro(billtex, gamerect, winrect, Vector2Zero(), 0, WHITE);
+            DrawTexturePro(ptctex , gamerect, winrect, Vector2Zero(), 0, WHITE);
         EndDrawing();
         //printf("%i\n", GetFPS());a
     }

@@ -169,9 +169,11 @@ isroad(int x, int y) {
     }
 }
 
+#define HORI(X, Y, R) (Bez) { X, Y, 255, 1, R  }
+#define VERT(X, Y, R) (Bez) { X, Y, 1, 255, R  }
 #define LINEX(Y, R1, R2) \
-    (Bez) { 0, Y, 255, 1, R1  }, \
-    (Bez) { 63, Y, 255, 1, R2 }
+    HORI( 0, Y, R1), \
+    HORI(63, Y, R2)
 
 #define STARTCHUNK(BC) memset(BC, 0, sizeof(Boolchunk));
 #define ENDCHUNK(BC,X,Y) insertchunk((i16vec2){X,Y}, BC);
@@ -201,4 +203,10 @@ loadmap() {
     STARTCHUNK(bc);
         bezier(bc, (Bez[]){ LINEX(32, 16, 8), Bez0, });
     ENDCHUNK(bc, 5, 0);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ VERT(0, 32, 8), HORI(32, 0, 16), Bez0, });
+    ENDCHUNK(bc, 6, 0);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ HORI(63, 32, 8), HORI(32, 0, 16), Bez0, });
+    ENDCHUNK(bc, 6, 0);
 }
