@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
-#include "world.h"
 #include <time.h>
 
 #define PAL1 (Color) {  11,  16,  22, 255 }
@@ -62,7 +61,6 @@ loadass() {
 #define GAMEW 160
 #define GAMEH 90
 #define ASPECT (float)GAMEW / (float)GAMEH
-#define TREESCALE 8
 
 const Color 
 sky = {100, 100, 255, 255};
@@ -96,76 +94,12 @@ struct {
     float roll;
     float fov;
     float foc_len;
-}
+} 
 cam = {
     .pos = {0,0,5},
     .frwd = {1,0,0},
     .fov = PI / 2,
 };
-
-void 
-printv3(Vector3 vec) {
-    printf("(%f, %f, %f)\n", vec.x, vec.y, vec.z);
-}
-
-void
-drawbillboard(Vector3 billpos, Sprite sprite) {
-    Quaternion rotate = QuaternionFromAxisAngle((Vector3) {0, 1, 0}, PI/2);
-    rotate = QuaternionMultiply(QuaternionFromAxisAngle((Vector3) {1, 0, 0}, -Vector2Angle((Vector2){1, 0}, (Vector2) {billpos.x - cam.pos.x, billpos.y - cam.pos.y})), rotate);
-    Vector3 localcampos = Vector3RotateByQuaternion(cam.pos, rotate);
-    localcampos = Vector3Add(localcampos, Vector3RotateByQuaternion(Vector3Scale(billpos, -1), rotate));
-    Vector3 localcamfrwd = Vector3RotateByQuaternion(cam.frwd, rotate);
-    Vector3 localcamside = Vector3RotateByQuaternion(cam.side, rotate);
-    Vector3 localcamup = Vector3RotateByQuaternion(cam.up, rotate);
-
-    // printf("Transformed Vectors:\n");
-    // printv3(localcampos);
-    // printv3(cam.frwd);
-    // printv3(localcamfrwd);
-    // printv3(localcamside);
-    // printv3(localcamup);
-    SetWindowState(FLAG_WINDOW_RESIZABLE);
-    //ToggleFullscreen();
-
-    for (int x = 0; x < GAMEW; x++) {
-        for (int y = 0; y < GAMEH; y++) {
-            Vector2 uv = {(float)x / GAMEW * 2 - 1, (float)y / GAMEH * 2 - 1};
-            uv.x *= ASPECT;
-            uv.y *= -1;
-
-            Vector3 ray = localcamfrwd;
-
-            ray = Vector3Add(ray, Vector3Scale(localcamside, uv.x * cam.foc_len));
-            ray = Vector3Add(ray, Vector3Scale(localcamup  , uv.y * cam.foc_len));
-            if(cam.roll != 0)
-                ray = Vector3RotateByAxisAngle(ray, localcamfrwd, cam.roll);
-            
-            if (ray.z >= -0.0f) {
-                continue;
-            }
-
-            ray = Vector3Scale(ray, -localcampos.z / ray.z);
-            ray = Vector3Add(ray, localcampos);
-
-            
-            int imgx = (int)(ray.y * TREESCALE) + sprite.w / 2;
-            int imgy = sprite.h - (int)(ray.x * TREESCALE);
-
-            if(imgx < 0 || imgx >= sprite.w) continue;
-
-            if(imgy < 0 || imgy >= sprite.h) continue;
-
-            Color imgCol = sprite.p[imgy * sprite.w + imgx];
-
-            if(imgCol.a == 0) continue;
-            if(1000/Vector3LengthSqr(ray) < depth[y][x]) continue;
-
-            depth[y][x] = 1000/Vector3LengthSqr(ray);
-            billpix[y][x] = imgCol;
-        }
-    }
-}
-
 
 /* Returns {0} if ray does not intersect ground */
 Vector3
@@ -177,9 +111,8 @@ raytoground(int x, int y) {
     Vector3 ray = cam.frwd;
     ray = Vector3Add(ray, Vector3Scale(cam.side, uv.x * cam.foc_len));
     ray = Vector3Add(ray, Vector3Scale(cam.up  , uv.y * cam.foc_len));
-    if(cam.roll != 0)
-        ray = Vector3RotateByAxisAngle(ray, cam.frwd, cam.roll);
-    
+    ray = Vector3RotateByAxisAngle(ray, cam.frwd, cam.roll);
+    ray = Vector3Normalize(ray);
 
     if (ray.z >= -0.0f) {
         return Vector3Zero();
@@ -219,7 +152,6 @@ drawground() {
         }
     }
 }
-
 
 void
 drawhro() {
@@ -328,41 +260,14 @@ main(void) {
     SetWindowState(FLAG_WINDOW_RESIZABLE);
 
     Image img = GenImageColor(GAMEW, GAMEH, BLANK);
-
-    
     Texture2D grndtex = LoadTextureFromImage(img);
     Texture2D billtex = LoadTextureFromImage(img);
     Texture2D parttex = LoadTextureFromImage(img);
-
-    float billboardPos = 0;
 
     SetTargetFPS(60);
     while (!WindowShouldClose()) {
         dohro();
         docam();
-        
-        if(IsKeyDown(KEY_F)) billboardPos -= 0.1f;
-        if(IsKeyDown(KEY_H)) billboardPos += 0.1f;
-
-        //Clear pixel buffers
-
-        
-        for (int x = 0; x < GAMEW; x++) {
-            for (int y = 0; y < GAMEH; y++) {
-                billpix[y][x].a = 0;
-                partpix[y][x].a = 0;
-                grndpix[y][x].a = 0;
-                depth[y][x] = 0;
-            }
-        }  
-
-        //draw trees
-        int index = 0;
-        do{
-            drawbillboard((Vector3) {treeloc[index].x, treeloc[index].y, 0}, sprite_eviltree);
-            index++;
-        }
-        while(!Vector2Equals(treeloc[index], Vector2Zero()));
         
         drawground();
         drawhro();
@@ -382,12 +287,10 @@ main(void) {
                 tint = BLUE;
             Rectangle gamerect = (Rectangle){0,0,GAMEW,GAMEH};
             Rectangle winrect  = (Rectangle){0,0,GetScreenWidth(),GetScreenHeight()};
-            DrawTexturePro(grndtex, gamerect, winrect, Vector2Zero(), 0, tint);
-            DrawTexturePro(billtex, gamerect, winrect, Vector2Zero(), 0, tint);
             //DrawTexturePro(parttex, gamerect, winrect, Vector2Zero(), 0, tint);
+            //DrawTexturePro(billtex, gamerect, winrect, Vector2Zero(), 0, tint);
+            DrawTexturePro(grndtex, gamerect, winrect, Vector2Zero(), 0, tint);
         EndDrawing();
-
-        printf("%i\n", GetFPS());
     }
 
     CloseWindow();
