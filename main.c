@@ -620,6 +620,7 @@ doenemies() {
         }
 
         if (enemies[i].triggered && !enemies[i].gone) {
+            
             enemies[i].timer--;
             if(sin(enemies[i].timer / 8) > 0){
                 drawbillboard(Vector3Add(cam.pos, Vector3Add(Vector3Scale(cam.frwd, 8), Vector3Scale(cam.side, enemies[i].road))), sprite_warning, 16);
@@ -628,7 +629,7 @@ doenemies() {
             if(enemies[i].timer < 30) {
                 zpos = enemies[i].timer/2;
             }
-
+            
             switch(enemies[i].type) {
                 case SPEAR:
                     drawbillboard((Vector3) {enemies[i].pos.x, enemies[i].pos.y, zpos}, sprite_speardemon, 4);
@@ -655,6 +656,71 @@ doenemies() {
                     PlaySound(audio_bonk);
                 }
                 enemies[i].gone = true;
+            }
+        }
+    }
+}
+
+void
+donumbers() {
+    int numx = 310;
+    int numy = 4;
+
+    int framecount = frame;
+    int frac = (framecount % 60) * 100 / 60;
+    int sec = framecount / 60;
+
+    for(int x = 0; x < 8; x++) {
+        for(int y = 0; y < 16; y++) {
+            billpix[numy + y][numx + x] = sprite_numbers.p[y * 96 + x + 8 * (frac % 10)];
+        }
+    }
+    numx -= 10;
+    for(int x = 0; x < 8; x++) {
+        for(int y = 0; y < 16; y++) {
+            billpix[numy + y][numx + x] = sprite_numbers.p[y * 96 + x + 8 * (frac / 10)];
+        }
+    }
+    numx -= 3;
+    for(int x = 0; x < 2; x++) {
+        for(int y = 0; y < 16; y++) {
+            billpix[numy + y][numx + x] = sprite_numbers.p[y * 96 + x + 8 * (10) + 3];
+        }
+    }
+    numx -= 9;
+    int min = sec / 60;
+    sec = sec % 60;
+
+    for(int x = 0; x < 8; x++) {
+        for(int y = 0; y < 16; y++) {
+            billpix[numy + y][numx + x] = sprite_numbers.p[y * 96 + x + 8 * (sec % 10)];
+        }
+    }
+    numx -= 10;
+    for(int x = 0; x < 8; x++) {
+        for(int y = 0; y < 16; y++) {
+            billpix[numy + y][numx + x] = sprite_numbers.p[y * 96 + x + 8 * (sec / 10)];
+        }
+    }
+    numx -= 3;
+    for(int x = 0; x < 2; x++) {
+        for(int y = 0; y < 16; y++) {
+            billpix[numy + y][numx + x] = sprite_numbers.p[y * 96 + x + 8 * (11) + 3];
+        }
+    }
+    numx -= 9;
+    if(min > 0) {
+        for(int x = 0; x < 8; x++) {
+            for(int y = 0; y < 16; y++) {
+                billpix[numy + y][numx + x] = sprite_numbers.p[y * 96 + x + 8 * (min % 10)];
+            }
+        }
+        numx -= 10;
+    }
+    if(min >= 10) {
+        for(int x = 0; x < 8; x++) {
+            for(int y = 0; y < 16; y++) {
+                billpix[numy + y][numx + x] = sprite_numbers.p[y * 96 + x + 8 * (min / 10)];
             }
         }
     }
@@ -735,7 +801,7 @@ main(void) {
         if (paused && IsKeyPressed(KEY_SPACE)) paused = false;
         updatemusic();
 
-        printf("player = %d %d\n", (int)hro.pos.x, (int)hro.pos.y);
+        //printf("player = %d %d\n", (int)hro.pos.x, (int)hro.pos.y);
 
         //Clear pixel buffers
         memset(billpix, 0, sizeof(billpix));
@@ -755,6 +821,8 @@ main(void) {
         
         drawground();
         drawhro();
+
+        donumbers();
 
         if (paused) drawnotice(sprite_pressspace);
         if (hro.pos.x > 280 && hro.pos.x < 400) drawnotice(sprite_controls1);
