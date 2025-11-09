@@ -272,6 +272,9 @@ drawground() {
                 continue;
             }
 
+            if (fabsf(ray.x) > 99999) continue;
+            if (fabsf(ray.y) > 99999) continue;
+
             int wx = (int)ray.x + (int)cam.pos.x;
             int wy = (int)ray.y + (int)cam.pos.y;
 
@@ -320,6 +323,32 @@ drawptc(Vector3 pos, Color col, int rot) {
     }
     if (0 <= x && x < GAMEW && 0 <= y && y < GAMEH)
         grndpix[y][x] = col;
+}
+
+
+void
+drawptc3(Vector3 pos, Color col, int rot) {
+    Vector3 spos = worldtoscreen(pos);
+    int x = (int)spos.x, y = (int)spos.y;
+    if (0 <= x && x < GAMEW && 0 <= y && y < GAMEH)
+        grndpix[y][x] = col;
+    switch (rot) {
+    case 0: x -= 1; break;
+    case 1: x += 1; break;
+    case 2: y -= 1; break;
+    case 3: y += 1; break;
+    }
+    if (0 <= x && x < GAMEW && 0 <= y && y < GAMEH)
+        ptcpix[y][x] = col;
+}
+
+
+void
+drawptc2(Vector3 pos, Color col) {
+    Vector3 spos = worldtoscreen(pos);
+    int x = (int)spos.x, y = (int)spos.y;
+    if (0 <= x && x < GAMEW && 0 <= y && y < GAMEH)
+        ptcpix[y][x] = col;
 }
 
 typedef struct {
@@ -609,10 +638,6 @@ void
 doenemies() {
     for(int i = 0; i < enemycount; i++) {
         if(!enemies[i].triggered) {
-            Vector3 screen = worldtoscreen((Vector3){enemies[i].trigger.x, enemies[i].trigger.y, 0});
-            if(screen.x >= 0 && screen.y >= 0 && screen.x < GAMEW && screen.y < GAMEH)
-                ptcpix[(int)screen.y][(int)screen.x] = (Color) {255, 255, 255, 255};
-
             if(Vector2DistanceSqr(hro.pos, enemies[i].trigger) < TRIGGERRANGE * TRIGGERRANGE) {
                 enemies[i].triggered = true;
                 enemies[i].timer = enemies[i].delay;
@@ -672,6 +697,9 @@ updatemusic() {
     if (currmusic == &audio_m1 && !paused) targtrans = &audio_m1t2;
     if (currmusic == &audio_m2 && hro.pos.x > 800) targtrans = &audio_m2t3;
     if (currmusic == &audio_m3 && hro.pos.x > 1450) targtrans = &audio_m3t4;
+    if (currmusic == &audio_m4                    ) targtrans = &audio_m4t5;
+    if (currmusic == &audio_m5 && hro.pos.x > 2300) targtrans = &audio_m5t6;
+    if (currmusic == &audio_m6                    ) targtrans = &audio_m6t7;
 
     if (targtrans && !currtrans) {
         float tml = GetMusicTimeLength(*targtrans);
@@ -691,6 +719,9 @@ updatemusic() {
             if (currtrans == &audio_m1t2) currmusic = &audio_m2;
             if (currtrans == &audio_m2t3) currmusic = &audio_m3;
             if (currtrans == &audio_m3t4) currmusic = &audio_m4;
+            if (currtrans == &audio_m4t5) currmusic = &audio_m5;
+            if (currtrans == &audio_m5t6) currmusic = &audio_m6;
+            if (currtrans == &audio_m6t7) currmusic = &audio_m7;
 
             PlayMusicStream(*currmusic);
 
@@ -698,6 +729,85 @@ updatemusic() {
         }
     }
     UpdateMusicStream(*currmusic);
+}
+
+typedef struct {
+    Vector3 pos;
+    Vector3 vel;
+} Bptc;
+
+#define ffff 500
+Bptc bpcts[ffff];
+int nb;
+int bosstime = 0;
+float y;
+
+void
+doboss() {
+    if (hro.pos.x < 2300) return;
+    Vector3 bosspos = {0};
+    float oldx = bosspos.x;
+
+    bosstime++;
+
+    bosspos.x = hro.pos.x + 10;
+    float diffx = bosspos.x - oldx;
+    bosspos.y = 560;
+    bosspos.y = Lerp(bosspos.y, hro.pos.y, 0.4);
+    bosspos.z = 6;
+
+    if (nb < ffff && bosstime % 2 == 0 && IsMusicStreamPlaying(audio_m6))
+        bpcts[nb++] = (Bptc) {
+            .pos = Vector3Add(Vector3Subtract(cam.pos, Vector3Scale(cam.frwd, 3)), (Vector3) {
+                        0,
+(float)GetRandomValue(-100,100) / 50,
+(float)GetRandomValue(-100,100) / 50 - 1
+                    }),
+            .vel = Vector3Zero(),
+        };
+
+    for (int n = 0; n < nb; n++) {
+        if (Vector3Length(bpcts[n].vel) < 0.01) {
+            Vector3 norm = Vector3Normalize(Vector3Subtract(bpcts[n].pos, bosspos));
+            Vector3 targ = Vector3Add(Vector3Scale(norm, 5), bosspos);
+            printv3(norm);
+
+            if (!IsMusicStreamPlaying(audio_m7)) {
+            bpcts[n].pos = Vector3Lerp(bpcts[n].pos, targ, 0.1);
+            float dnz = Vector2Length((Vector2){norm.x, norm.y}) * SGN(norm.x) * SGN(norm.y);
+            Vector2 norm2 = Vector2Normalize((Vector2){dnz, norm.z});
+            bpcts[n].pos.z -= norm2.x;
+            bpcts[n].pos.x += norm2.y;
+            bpcts[n].pos.y -= norm2.y;
+            } else {
+
+            bpcts[n].pos.z += 0.1 + (float)GetRandomValue(-100,100) / 50;
+            bpcts[n].pos.x += 0.1 + (float)GetRandomValue(-100,100) / 50 + oldx;
+            bpcts[n].pos.y += 0.1 + (float)GetRandomValue(-100,100) / 50;
+            bpcts[n].pos = Vector3Lerp(bpcts[n].pos, targ, 0.2);
+            }
+            drawptc2(bpcts[n].pos, PAL9);
+        } else {
+            bpcts[n].vel = Vector3Scale(bpcts[n].vel, 0.9);
+            bpcts[n].pos = Vector3Add(bpcts[n].pos, bpcts[n].vel);
+            drawptc2(bpcts[n].pos, PAL34);
+        }
+    }
+
+    if (bosstime % 100 > 90 && IsMusicStreamPlaying(audio_m7)) {
+        if (bosstime % 100 == 91)
+            y = (float)GetRandomValue(-100,100) / 200;
+        int b = bosstime % 100 - 90;
+        for (int n = b*10; n < MIN(b*10+10, 100); n++) {
+            bpcts[n].vel = (Vector3) { -0.4, y, 0 };
+        }
+    }
+    if (IsMusicStreamPlaying(audio_m7)) {
+        drawptc3(Vector3Add(bosspos, (Vector3){3, 3, 3}), PAL1, 2);
+        drawptc3(Vector3Add(bosspos, (Vector3){3, -3, 3}), PAL1, 2);
+    }
+
+    //memset(ptcpix , 255, sizeof(ptcpix ));
 }
 
 int 
@@ -718,30 +828,30 @@ main(void) {
     Texture2D grndtex = LoadTextureFromImage(img);
     Texture2D billtex = LoadTextureFromImage(img);
     Texture2D ptctex  = LoadTextureFromImage(img);
-    //hro.pos = (Vector2){0,32};
-    //hro.pos = (Vector2){645,153};
-    hro.pos = (Vector2){1453, 379};
+    hro.pos = (Vector2){0,32};
+    hro.pos = (Vector2){2250, 559};
 
-    PlayMusicStream(audio_m1);
-    currmusic = &audio_m1;
+    PlayMusicStream(audio_m6);
+    currmusic = &audio_m6;
 
     SetTargetFPS(60);
     while (!WindowShouldClose()) {
         partcount = 0;
         billcount = 0;
-        if (!paused) dohro();
-        docam();
-
-        if (paused && IsKeyPressed(KEY_SPACE)) paused = false;
-        updatemusic();
-
-        printf("player = %d %d\n", (int)hro.pos.x, (int)hro.pos.y);
-
         //Clear pixel buffers
         memset(billpix, 0, sizeof(billpix));
         memset(ptcpix , 0, sizeof(ptcpix ));
         memset(grndpix, 0, sizeof(grndpix));
         memset(depth, 0, sizeof(depth));
+
+        if (!paused) dohro();
+        docam();
+        doboss();
+
+        if (paused && IsKeyPressed(KEY_SPACE)) paused = false;
+        updatemusic();
+
+        printf("player = %d %d\n", (int)hro.pos.x, (int)hro.pos.y);
 
         doenemies();
 
