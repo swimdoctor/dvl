@@ -11,7 +11,7 @@
 #include "enemies.h"
 
 bool paused = true;
-int frame = 0;
+int frame = 800;
 
 #define PAL1  (Color) {  11,  16,  22, 255 }
 #define PAL2  (Color) {  20,  31,  37, 255 }
@@ -489,8 +489,9 @@ void
 drawnotice2(Sprite sprite) {
     for (int x = 0; x < GAMEW; x++)
         for (int y = 0; y < GAMEH; y++)
-            if (sprite.p[y*GAMEW+x].a)
-                ptcpix[y][x] = sprite.p[y*GAMEW+x];
+            if (sprite.p[y*GAMEW+x].a) {
+                billpix[y][x] = sprite.p[y*GAMEW+x];
+            }
 }
 
 void
@@ -720,6 +721,56 @@ doenemies() {
 }
 
 int startframe = 0;
+
+int highscore = 0;
+void 
+drawhighscore() {
+    drawnotice2(sprite_highscore);
+
+    int numx = 96;
+    int numy = 42;
+
+    int framecount = highscore;
+    int frac = (framecount % 60) * 100 / 60;
+    int sec = framecount / 60;
+
+    for(int x = 0; x < 8; x++) {
+        for(int y = 0; y < 16; y++) {
+            billpix[numy + y][numx + x] = sprite_highscorenums.p[y * 96 + x + 8 * (frac / 10)];
+        }
+    }
+    numx -= 5;
+    int min = sec / 60;
+    sec = sec % 60;
+
+    for(int x = 0; x < 8; x++) {
+        for(int y = 0; y < 16; y++) {
+            billpix[numy + y][numx + x] = sprite_highscorenums.p[y * 96 + x + 8 * (sec % 10)];
+        }
+    }
+    numx -= 4;
+    for(int x = 0; x < 8; x++) {
+        for(int y = 0; y < 16; y++) {
+            billpix[numy + y][numx + x] = sprite_highscorenums.p[y * 96 + x + 8 * (sec / 10)];
+        }
+    }
+    numx -= 5;
+    if(min > 0) {
+        for(int x = 0; x < 8; x++) {
+            for(int y = 0; y < 16; y++) {
+                billpix[numy + y][numx + x] = sprite_highscorenums.p[y * 96 + x + 8 * (min % 10)];
+            }
+        }
+        numx -= 4;
+    }
+    if(min >= 10) {
+        for(int x = 0; x < 8; x++) {
+            for(int y = 0; y < 16; y++) {
+                billpix[numy + y][numx + x] = sprite_highscorenums.p[y * 96 + x + 8 * (min / 10)];
+            }
+        }
+    }
+}
 
 void
 donumbers() {
@@ -952,6 +1003,7 @@ main(void) {
     //PlayMusicStream(audio_m6);
     //currmusic = &audio_m6;
 
+    hro.pos = (Vector2) {4800, 0};
     SetTargetFPS(60);
     while (!WindowShouldClose()) {
         partcount = 0;
@@ -982,7 +1034,7 @@ main(void) {
         } else {
             on = true;
             if (paused && IsKeyPressed(KEY_SPACE)) {
-                startFrame = frame;
+                startframe = frame;
                 paused = false;
             }
         }
@@ -1018,17 +1070,27 @@ main(void) {
 
         if (on && frame < 772) 
             drawnotice2(sprite_present);
+
+        
         UpdateTexture(grndtex, grndpix);
         UpdateTexture(billtex, billpix);
         UpdateTexture(ptctex , ptcpix );
+
+        if(hro.pos.x > 4700){
+            printf("HIGH");
+            highscore = frame - startframe;
+            drawhighscore();
+
+
+        }
 
         BeginDrawing();
             ClearBackground(RAYWHITE);
 
             Rectangle gamerect = (Rectangle){0,0,GAMEW,GAMEH};
             Rectangle winrect  = (Rectangle){0,0,GetScreenWidth(),GetScreenHeight()};
-            DrawTexturePro(grndtex, gamerect, winrect, Vector2Zero(), 0, WHITE);
-            DrawTexturePro(billtex, gamerect, winrect, Vector2Zero(), 0, WHITE);
+            //DrawTexturePro(grndtex, gamerect, winrect, Vector2Zero(), 0, WHITE);
+            //DrawTexturePro(billtex, gamerect, winrect, Vector2Zero(), 0, WHITE);
             DrawTexturePro(ptctex , gamerect, winrect, Vector2Zero(), 0, WHITE);
         EndDrawing();
 

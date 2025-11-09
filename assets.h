@@ -28,3 +28,5 @@ X(ArcadeFarbloodless);
 X(ArcadeFarsplat);
 
 X(present);
+X(highscore);
+X(highscorenums);
