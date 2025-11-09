@@ -1,28 +1,35 @@
+#include "util.h"
 #include "raylib.h"
 #include "raymath.h"
 #include "map.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <time.h>
 
 // ASSETS
-#define X(name, path) Image name;
+typedef struct {
+    int w, h;
+    Color* p;
+} Sprite;
+
+#define X(name) Sprite sprite_##name;
 #include "assets.h"
 #undef X 
 
 void
 loadass() {
-#define X(name, path) name = LoadImage("./" path);
+#define X(name) \
+    Image img_##name = LoadImage("./" #name ".png"); \
+    sprite_##name.w = img_##name.width ; \
+    sprite_##name.h = img_##name.height; \
+    sprite_##name.p = LoadImageColors(img_##name);
 #include "assets.h"
 #undef X 
 }
 
-const int
-GAMEW = 320,
-GAMEH = 180;
-
-#define GAMEW 320
-#define GAMEH 180
+#define GAMEW 160
+#define GAMEH 90
 #define ASPECT (float)GAMEW / (float)GAMEH
 
 const Color 
@@ -113,18 +120,15 @@ drawground() {
 }
 
 void
-docam() {
-    cam.pos.x = hro.pos.x;
-    cam.pos.y = hro.pos.y;
-    cam.pos.z = 1 / (hro.touched*0.1 + 0.4) + 0.5;
-    cam.frwd.x = hro.mom.x;
-    cam.frwd.y = hro.mom.y;
-
-    cam.frwd = Vector3Normalize(cam.frwd);
-    cam.side = Vector3CrossProduct((Vector3){0, 0, 1}, cam.frwd);
-    cam.up   = Vector3CrossProduct(cam.frwd, cam.side);
-    
-    cam.foc_len = 1.0 / tan(cam.fov / 2.0);
+drawhro() {
+    Sprite sprite = sprite_carfrwd;
+    int sx = GAMEW/2 - sprite.w / 2;
+    int sy = GAMEH - sprite.h;
+    for (int x = 0; x < sprite.w; x++)
+        for (int y = 0; y < sprite.w; y++) {
+            if (sprite.p[y*sprite.w+x].a == 0) continue;
+            grndpix[sy+y][sx+x] = sprite.p[y*sprite.w+x];
+        }
 }
 
 #define HRO_SZ           16
@@ -143,25 +147,45 @@ docam() {
 #define HRO_RAISEBOOST2  2
 #define HRO_RAISEBOOST3  2.4
 
+#define HRO_COLBOUNCE    -0.4
+
+#define CAM_BACK         5
+#define CAM_Z            2.5
+#define CAM_LOOKZ        -0.1
+
+void
+docam() {
+    cam.pos.x = hro.pos.x - hro.mom.x * CAM_BACK;
+    cam.pos.y = hro.pos.y - hro.mom.y * CAM_BACK;
+    cam.pos.z = CAM_Z;
+    cam.frwd.x = hro.mom.x;
+    cam.frwd.y = hro.mom.y;
+    cam.frwd.z = CAM_LOOKZ;
+
+    cam.frwd = Vector3Normalize(cam.frwd);
+    cam.side = Vector3CrossProduct((Vector3){0, 0, 1}, cam.frwd);
+    cam.up   = Vector3CrossProduct(cam.frwd, cam.side);
+    
+    cam.foc_len = 1.0 / tan(cam.fov / 2.0);
+}
 void
 dohro() {
     if (IsKeyDown(KEY_R)) hro.sp = 0.04;
 
     if (hro.mom.x == 0 && hro.mom.y == 0) hro.mom = (Vector2) {1,0};
 
-    Vector2 frwd = Vector2Normalize(hro.mom);
-
     bool left = IsKeyDown(KEY_LEFT ) || IsKeyDown(KEY_A);
     bool right = IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D);
     if      (left && !right)
-        hro.to = Vector2Rotate(frwd, -PI/2);
+        hro.to = Vector2Rotate(hro.mom, -PI/2);
     else if (right && !left)
-        hro.to = Vector2Rotate(frwd,  PI/2);
+        hro.to = Vector2Rotate(hro.mom,  PI/2);
     else
         hro.to = (Vector2){0};
 
-    hro.vel = Vector2Add(Vector2Scale(hro.mom, hro.sp), Vector2Scale(hro.to, HRO_TURNACC));
-    hro.mom = Vector2Normalize(hro.vel);
+    hro.mom = Vector2Scale(hro.mom, MAX(fabsf(hro.sp), 0.3));
+    hro.mom = Vector2Add(hro.mom, Vector2Scale(hro.to, HRO_TURNACC));
+    hro.mom = Vector2Normalize(hro.mom);
 
     if (IsKeyDown(KEY_SPACE) || IsKeyDown(KEY_J)) {
         hro.touched += 1;
@@ -172,8 +196,10 @@ dohro() {
         hro.touched = 0;
     }
 
-    if (hro.touched == 0)
-        hro.sp = (hro.sp + HRO_LINACC) * HRO_LINDAMP;
+    if (hro.touched == 0) {
+        hro.sp = (hro.sp + HRO_LINACC);
+        if (hro.sp > 0) hro.sp *= HRO_LINDAMP;
+    }
     else if (hro.touched < HRO_TIMETOUCH)
         hro.sp = hro.sp * HRO_PRETOUCHDAMP;
     else 
@@ -188,15 +214,23 @@ dohro() {
             hro.sp *= HRO_RAISEBOOST1;
     }
 
-    hro.pos = Vector2Add(hro.pos, hro.vel);
+    Vector2 next = Vector2Add(hro.pos, Vector2Scale(hro.mom, hro.sp));
+    if (isroad((int)next.x, (int)next.y)) {
+        hro.pos = next;
+    } else {
+        hro.sp = HRO_COLBOUNCE * SGN(hro.sp);
+    }
 }
 
 int 
 main(void) {
+    SetTraceLogLevel(LOG_ERROR); 
+
     loadass();
     loadmap();
 
     InitWindow(800, 450, "raylib [core] example - basic window");
+    SetWindowState(FLAG_WINDOW_RESIZABLE);
 
     Image img = GenImageColor(GAMEW, GAMEH, BLANK);
     Texture2D grndtex = LoadTextureFromImage(img);
@@ -205,11 +239,11 @@ main(void) {
 
     SetTargetFPS(60);
     while (!WindowShouldClose()) {
-        markframe();
         dohro();
         docam();
         
         drawground();
+        drawhro();
         UpdateTexture(grndtex, grndpix);
         UpdateTexture(billtex, billpix);
         UpdateTexture(parttex, partpix);
