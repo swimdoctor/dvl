@@ -233,7 +233,7 @@ loadmap() {
         bezier(bc, (Bez[]){ LINEX(48, 8, 10), Bez0, });
     ENDCHUNK(bc, 11, 2);
     STARTCHUNK(bc);
-        bezier(bc, (Bez[]){ VERT(0, 48, 8), HORI(16, 63, 8), Bez0, });
+        bezier(bc, (Bez[]){ VERT(0, 48, 8), HORI(16, 63, 15), Bez0, });
     ENDCHUNK(bc, 12, 2);
 
 
@@ -241,7 +241,7 @@ loadmap() {
 #define R2 10
 #define R3 7
     STARTCHUNK(bc);
-        bezier(bc, (Bez[]){ HORI(16, 0, 8), VERT(0, 16, R1), Bez0, });
+        bezier(bc, (Bez[]){ HORI(16, 0, 15), VERT(0, 16, R1), Bez0, });
         bezier(bc, (Bez[]){ HORI(16, 64, R1), VERT(0, 48, R1), Bez0, });
     ENDCHUNK(bc, 12, 3);
     STARTCHUNK(bc);
@@ -318,6 +318,80 @@ loadmap() {
     STARTCHUNK(bc);
         bezier(bc, (Bez[]){ LINEY(32, 16, 16), Bez0 });
     ENDCHUNK(bc, 22, 5);
+
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ (Bez){ 32, 0, 32, 16, 16 }, (Bez){ 32, 48, 16, -32, 8 }, (Bez){ 64, 48, 16, -32, 16 }, Bez0 });
+    ENDCHUNK(bc, 22, 6);
+
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(48, 16, 16), Bez0 });
+    ENDCHUNK(bc, 23, 6);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(48, 16, 16), Bez0 });
+    ENDCHUNK(bc, 24, 6);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(48, 16, 16), Bez0 });
+    ENDCHUNK(bc, 25, 6);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(48, 16, 16), Bez0 });
+    ENDCHUNK(bc, 26, 6);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(48, 16, 16), Bez0 });
+    ENDCHUNK(bc, 27, 6);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(48, 16, 16), Bez0 });
+    ENDCHUNK(bc, 28, 6);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(48, 16, 16), Bez0 });
+    ENDCHUNK(bc, 29, 6);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(48, 16, 16), Bez0 });
+    ENDCHUNK(bc, 29, 6);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(48, 16, 16), Bez0 });
+    ENDCHUNK(bc, 30, 6);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(48, 16, 16), Bez0 });
+    ENDCHUNK(bc, 31, 6);
+
+    const int OX = 20;
+    const int OY = 3;
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ HORI(16, 0, 15), VERT(0, 16, R1), Bez0, });
+        bezier(bc, (Bez[]){ HORI(16, 64, R1), VERT(0, 48, R1), Bez0, });
+    ENDCHUNK(bc, 12+OX, 3+OY);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(16, 8, R1), Bez0, });
+        bezier(bc, (Bez[]){ LINEX(48, 8, R2), Bez0, });
+    ENDCHUNK(bc, 11+OX, 3+OY);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ VERT(63, 16, R1), HORI(48, 32, R2), VERT(63, 48, R2), Bez0, });
+    ENDCHUNK(bc, 10+OX, 3+OY);
+
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ HORI(16, 0, R2), VERT(0, 16, R2), Bez0, });
+        bezier(bc, (Bez[]){ HORI(16, 64, R2), VERT(0, 48, R2), Bez0, });
+    ENDCHUNK(bc, 12+OX, 4+OY);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(16, 8, R2), Bez0, });
+        bezier(bc, (Bez[]){ LINEX(48, 8, R2), Bez0, });
+    ENDCHUNK(bc, 11+OX, 4+OY);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ VERT(63, 16, R2), HORI(48, 32, R3), VERT(63, 48, R3), Bez0, });
+    ENDCHUNK(bc, 10+OX, 4+OY);
+
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ HORI(16, 0, R3), VERT(0, 16, R3), Bez0, });
+        bezier(bc, (Bez[]){ LINEX(48, 8, 16), Bez0, });
+    ENDCHUNK(bc, 12+OX, 5+OY);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ LINEX(16, 8, R3), Bez0, });
+        bezier(bc, (Bez[]){ LINEX(48, 8, R3), Bez0, });
+    ENDCHUNK(bc, 11+OX, 5+OY);
+    STARTCHUNK(bc);
+        bezier(bc, (Bez[]){ VERT(63, 16, R3), HORI(48, 32, 8), VERT(63, 48, 8), Bez0, });
+    ENDCHUNK(bc, 10+OX, 5+OY);
+
 
 
     //STARTCHUNK(bc);
