@@ -392,7 +392,20 @@ loadmap() {
         bezier(bc, (Bez[]){ VERT(63, 16, R3), HORI(48, 32, 8), VERT(63, 48, 8), Bez0, });
     ENDCHUNK(bc, 10+OX, 5+OY);
 
+    for (int i = 0; i < 3; i++) {
+        STARTCHUNK(bc);
+            bezier(bc, (Bez[]){ LINEX(48, 12, 12), Bez0 });
+            circle(bc, 16, 40, 3, false);
+            circle(bc, 32, 48, 3, false);
+            circle(bc, 48, 56, 3, false);
+        ENDCHUNK(bc, 32+i, 8);
+    }
 
+    for (int i = 0; i < 30; i++) {
+        STARTCHUNK(bc);
+            bezier(bc, (Bez[]){ LINEX(48, 12, 12), Bez0 });
+        ENDCHUNK(bc, 35+i, 8);
+    }
 
     //STARTCHUNK(bc);
     //    bezier(bc, (Bez[]){ LINEX(48, 12, 12), Bez0, });
